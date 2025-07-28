@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -104,8 +104,10 @@ public:
                 accentColour = juce::Colour(0xFFFFB366);
             }
             // COMPRESSOR CORE (Púrpura) - #B366FF (más vivo)
-            else if (name == "thd" || id == "thd" || name == "ratio" || id == "ratio" || 
-                     name == "knee" || id == "knee" || name == "range" || id == "range") {
+            else if (name == "tran" || id == "tran" || name == "thd" || id == "thd" ||
+                     name == "sust" || id == "sust" || name == "ratio" || id == "ratio" || 
+                     name == "sens" || id == "sens" || name == "knee" || id == "knee" ||
+                     name == "range" || id == "range") {
                 accentColour = juce::Colour(0xFFB366FF);
             }
             // AUTO-MAKEUP (Rojo) - #FF6666
@@ -267,10 +269,11 @@ public:
             if (name == "react" || id == "react") return "REACT";
             if (name == "hpf" || id == "hpf") return "HPF";
             if (name == "lpf" || id == "lpf") return "LPF";
-            if (name == "thd" || id == "thd") return "THD";
-            if (name == "ratio" || id == "ratio") return "RATIO";
-            if (name == "range" || id == "range") return "RANGE";
-            if (name == "knee" || id == "knee") return "KNEE";
+            // Etiquetas actualizadas para transient shaper
+            if (name == "tran" || id == "tran" || name == "thd" || id == "thd") return "TRAN";
+            if (name == "sust" || id == "sust" || name == "ratio" || id == "ratio") return "SUST";
+            if (name == "sens" || id == "sens" || name == "knee" || id == "knee") return "SENS";
+            if (name == "range" || id == "range") return "DMODE";
             if (name == "trim" || id == "trim") return "TRIM";
             if (name == "makeup" || id == "makeup") return "MAKE";
             if (name == "drywet" || id == "drywet") return "D/W";

@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -80,10 +80,10 @@ public:
     void updateWaveformData(const float* inputSamples, const float* processedSamples, int numSamples);
     void updateWaveformDataWithGR(const float* inputSamples, const float* processedSamples, const float* gainReductionSamples, int numSamples);
     
-    // NUEVO: Método para establecer valor actual de gain reduction en tiempo real
+    // Método para establecer valor actual de gain reduction en tiempo real
     void setCurrentGainReduction(float grDb) noexcept { 
         currentGainReduction = grDb; 
-        updateDeltaHistory(grDb);  // Actualizar histograma DELTA
+        // ELIMINADO: updateDeltaHistory(grDb) - ya no se utiliza
     }
     
     // NUEVO: Método para establecer el parámetro RANGE para escalado dinámico
@@ -107,8 +107,7 @@ public:
     void setExtKeyActive(bool active) noexcept { extKeyActive = active; repaint(); }
     void setSidechainLevel(float levelDb) noexcept { sidechainLevel = levelDb; }
     
-    // Control de modo DELTA
-    void setDeltaMode(bool enabled) noexcept { deltaMode = enabled; repaint(); }
+    // ELIMINADO: Control de modo DELTA - ya no se utiliza
     
     // Control de modo BYPASS
     void setBypassMode(bool enabled) noexcept { bypassMode = enabled; repaint(); }
@@ -211,7 +210,7 @@ private:
     bool soloSidechainActive = false;                 // Modo SOLO sidechain activo
     bool extKeyActive = false;                        // External key activo
     float sidechainLevel = -100.0f;                   // Nivel de sidechain en dB
-    bool deltaMode = false;                           // Modo DELTA activo
+    // ELIMINADO: bool deltaMode - ya no se utiliza
     bool bypassMode = false;                          // Modo BYPASS activo
 
     //==========================================================================
@@ -226,11 +225,7 @@ private:
     void drawKneeArea(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawWaveformAreas(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawGainReductionHistory(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawDeltaGainReduction(juce::Graphics& g, juce::Rectangle<float> bounds);  // NUEVO: Visualización específica para DELTA
-    void drawDeltaGainReductionHistory(juce::Graphics& g, juce::Rectangle<float> bounds);  // NUEVO: Histograma temporal específico para DELTA
-    
-    // Métodos de manejo del buffer DELTA
-    void updateDeltaHistory(float grDb) noexcept;  // Actualiza buffer temporal DELTA
+    // ELIMINADO: Métodos específicos de DELTA - ya no se utilizan
 
     //==========================================================================
     // FUNCIONES MATEMÁTICAS DEL EXPANSOR
@@ -264,10 +259,7 @@ private:
     // NUEVO: Parámetro RANGE actual para escalado dinámico
     std::atomic<float> currentRangeParameter{-40.0f}; // Valor por defecto
     
-    // NUEVO: Buffer temporal para histograma DELTA específico (Thread-Safe)
-    static constexpr int deltaHistorySize = 120;  // Mismo que displayPoints
-    std::atomic<float> deltaGrHistory[deltaHistorySize]; // Buffer circular thread-safe
-    std::atomic<int> deltaHistoryIndex{0};       // Índice circular thread-safe
+    // ELIMINADO: Buffer temporal para histograma DELTA - ya no se utiliza
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TransferFunctionDisplay)
 };

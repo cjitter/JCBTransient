@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -20,7 +20,7 @@
 #include <unordered_map>
 
 // Archivos del proyecto
-#include "JCBExpander.h"
+#include "JCBTransient.h"
 #include "Helpers/MovingAverage4800.h"
 
 using namespace juce;
@@ -28,15 +28,15 @@ using namespace juce;
 //==============================================================================
 // CLASE PRINCIPAL DEL PROCESADOR
 //==============================================================================
-class JCBExpanderAudioProcessor : public juce::AudioProcessor,
+class JCBTransientAudioProcessor : public juce::AudioProcessor,
                                     public juce::AudioProcessorValueTreeState::Listener,
                                     private juce::Timer
 {
 public:
     //==============================================================================
     // Constructor y destructor
-    JCBExpanderAudioProcessor();
-    ~JCBExpanderAudioProcessor() override;
+    JCBTransientAudioProcessor();
+    ~JCBTransientAudioProcessor() override;
     
     //==============================================================================
     // Métodos principales del AudioProcessor
@@ -290,5 +290,5 @@ private:
     bool isStateA{true};
     
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JCBExpanderAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JCBTransientAudioProcessor)
 };

@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -15,7 +15,7 @@
 using namespace juce;
 
 /**
- * Paleta de colores del tema oscuro moderno para JCBCompressor
+ * Paleta de colores del tema oscuro moderno para JCBTransient
  * 
  * Sistema unificado de colores que define toda la estética visual del plugin.
  * Incluye colores para backgrounds, accents, texto, controles, medidores y 
@@ -70,13 +70,7 @@ namespace DarkTheme
     const Colour meterClip = Colour(0xff2196f3);             // Blue para clip
     const Colour meterClipIndicator = Colour(0xffff0000);    // Red para detección 0dBFS
     
-    //==========================================================================
-    // COLORES DE MODO DELTA - Tema Teal/Cyan
-    //==========================================================================
-    const Colour deltaLow = Colour(0xff00bcd4);              // Cyan claro
-    const Colour deltaMid = Colour(0xff00acc1);              // Dark cyan
-    const Colour deltaHigh = Colour(0xff0097a7);             // Darker cyan
-    const Colour deltaClip = Colour(0xff00838f);             // Darkest cyan
+    // ELIMINADO: COLORES DE MODO DELTA - ya no se utilizan
     
     //==========================================================================
     // COLORES DE MODO SOLO SC - Tema Red
@@ -194,15 +188,7 @@ namespace DarkTheme
         return gradient;
     }
     
-    // Gradiente para gain reduction en modo DELTA
-    inline ColourGradient createDeltaGainReductionGradient(const Rectangle<float>& bounds)
-    {
-        // Usar el mismo color verde que el histograma en modo DELTA
-        auto deltaGreen = Colour(0xFF1DB954);  // Verde del histograma
-        auto gradient = ColourGradient(deltaGreen, bounds.getTopLeft(),
-                                     deltaGreen, bounds.getBottomLeft(), false);
-        return gradient;
-    }
+    // ELIMINADO: createDeltaGainReductionGradient - ya no se utiliza
     
     // Gradiente básico para controles
     inline ColourGradient createControlGradient(const Rectangle<float>& bounds)
@@ -215,26 +201,9 @@ namespace DarkTheme
     // GRADIENTES PARA MODOS ESPECIALES
     //==========================================================================
     
-    // Gradientes para modo DELTA
-    inline ColourGradient createDeltaMeterGradient(const Rectangle<float>& bounds)
-    {
-        auto gradient = ColourGradient(deltaClip, bounds.getTopLeft(),
-                                     deltaLow, bounds.getBottomLeft(), false);
-        gradient.addColour(0.3, deltaHigh);
-        gradient.addColour(0.7, deltaMid);
-        return gradient;
-    }
+    // ELIMINADO: createDeltaMeterGradient - ya no se utiliza
     
-    // Gradiente para output meters en modo DELTA
-    inline ColourGradient createDeltaOutputMeterGradient(const Rectangle<float>& bounds)
-    {
-        // Gradiente invertido: cyan arriba, cyan más oscuro abajo
-        auto gradient = ColourGradient(deltaLow, bounds.getTopLeft(),
-                                     deltaClip, bounds.getBottomLeft(), false);
-        gradient.addColour(0.3, deltaMid);
-        gradient.addColour(0.7, deltaHigh);
-        return gradient;
-    }
+    // ELIMINADO: createDeltaOutputMeterGradient - ya no se utiliza
     
     // Gradientes para modo SOLO SC
     inline ColourGradient createSoloScMeterGradient(const Rectangle<float>& bounds)

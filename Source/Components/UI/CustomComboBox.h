@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -18,7 +18,7 @@
 //==============================================================================
 
 /**
- * CustomComboBox personalizado para el plugin JCBCompressor
+ * CustomComboBox personalizado para el plugin JCBTransient
  * 
  * Diseñado específicamente para la selección de algoritmos de detección
  * con estilo visual integrado al tema del plugin. Incluye:

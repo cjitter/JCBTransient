@@ -2,18 +2,18 @@
 #
 #  Copyright 2025 Juan Carlos Blancas
 #
-#  JCBCompressor is free software: you can redistribute it and/or modify
+#  JCBTransient is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation, either version 3 of the License, or
 #  (at your option) any later version.
 #
-#  JCBCompressor is distributed in the hope that it will be useful,
+#  JCBTransient is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with JCBCompressor. If not, see <http://www.gnu.org/licenses/>.
+#  along with JCBTransient. If not, see <http://www.gnu.org/licenses/>.
 #
 # ==============================================================================
 
@@ -160,9 +160,9 @@ function(add_pluginval_tests target)
 
     # Definir la ruta del plugin según el formato
     if(plugin_format STREQUAL "VST3")
-        set(plugin_path "${CMAKE_CURRENT_BINARY_DIR}/JCBCompressor_artefacts/$<CONFIG>/VST3/JCBCompressor.vst3")
+        set(plugin_path "${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/$<CONFIG>/VST3/JCBTransient.vst3")
     elseif(plugin_format STREQUAL "AU")
-        set(plugin_path "${CMAKE_CURRENT_BINARY_DIR}/JCBCompressor_artefacts/$<CONFIG>/AU/JCBCompressor.component")
+        set(plugin_path "${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/$<CONFIG>/AU/JCBTransient.component")
     else()
         message(WARNING "Unsupported plugin format for pluginval: ${plugin_format}")
         return()

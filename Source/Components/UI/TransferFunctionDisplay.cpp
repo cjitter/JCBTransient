@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 
@@ -26,10 +26,7 @@ TransferFunctionDisplay::TransferFunctionDisplay()
     processedWaveformBuffer.resize(waveformBufferSize, -100.0f);   // Buffer salida procesada
     gainReductionBuffer.resize(waveformBufferSize, 0.0f);          // Buffer GR (0dB = sin reducción)
     
-    // Inicializar buffer específico para histograma DELTA (Thread-Safe)
-    for (int i = 0; i < deltaHistorySize; ++i) {
-        deltaGrHistory[i].store(0.0f, std::memory_order_relaxed);  // Buffer histograma DELTA (0dB = sin reducción)
-    }
+    // ELIMINADO: Inicialización de buffer DELTA - ya no se utiliza
     
     // Estado inicial: sin datos de audio disponibles
     hasWaveformData.store(false);
@@ -59,22 +56,23 @@ void TransferFunctionDisplay::paint(juce::Graphics& g)
     drawGrid(g, graphBounds);
     // Mostrar contenido según el modo
     if (!soloSidechainActive && !bypassMode) {
-        if (deltaMode) {
-            // En modo DELTA mostrar histograma temporal específico
-            drawDeltaGainReductionHistory(g, graphBounds);  // NUEVO: Histograma temporal específico para DELTA
-        } else if (envelopeVisible) {
-            // Modo normal: solo mostrar waveforms (sin histograma de gain reduction)
-            drawWaveformAreas(g, graphBounds);  // Formas de onda de entrada y salida
+        if (envelopeVisible) {
+            // Mostrar waveforms (formas de onda de entrada y salida)
+            drawWaveformAreas(g, graphBounds);
         }
     }
     
-    // Solo mostrar elementos de compresión en modo normal
-    if (!bypassMode && !deltaMode && !soloSidechainActive) {
+    // ELIMINADO: Solo mostrar envolventes y GR meter - sin transfer function
+    // Los elementos de compresión (threshold, knee, transfer curve) han sido deshabilitados
+    // según requerimientos del usuario para el transient shaper
+    /*
+    if (!bypassMode && !soloSidechainActive) {
         drawThresholdProjection(g, graphBounds);
         drawRangeProjection(g, graphBounds);
         drawKneeArea(g, graphBounds);
         drawTransferCurve(g, graphBounds);
     }
+    */
 }
 
 void TransferFunctionDisplay::resized()
@@ -148,10 +146,7 @@ void TransferFunctionDisplay::clearWaveformData()
     std::fill(processedWaveformBuffer.begin(), processedWaveformBuffer.end(), -100.0f);
     std::fill(gainReductionBuffer.begin(), gainReductionBuffer.end(), 0.0f);
     
-    // Limpiar buffer DELTA (Thread-Safe)
-    for (int i = 0; i < deltaHistorySize; ++i) {
-        deltaGrHistory[i].store(0.0f, std::memory_order_relaxed);
-    }
+    // ELIMINADO: Limpiar buffer DELTA - ya no se utiliza
     
     // Resetear estados de envolvente
     inputEnvelopeState.store(0.0f, std::memory_order_relaxed);
@@ -541,8 +536,8 @@ void TransferFunctionDisplay::drawTransferCurve(juce::Graphics& g, juce::Rectang
     }
     
     // Solo dibujar la curva blanca si NO estamos en modos especiales
-    // (BYPASS, DELTA, SOLO SC ocultan la curva para mejor lectura de textos)
-    if (!bypassMode && !deltaMode && !soloSidechainActive)
+    // (BYPASS, SOLO SC ocultan la curva para mejor lectura de textos)
+    if (!bypassMode && !soloSidechainActive)
     {
         // Dibujar la curva en blanco
         g.setColour(juce::Colours::white);
@@ -1227,6 +1222,9 @@ void TransferFunctionDisplay::mouseExit(const juce::MouseEvent&)
 
 void TransferFunctionDisplay::mouseDown(const juce::MouseEvent& e)
 {
+    // DESHABILITADO: No permitir interacción con transfer function
+    // Solo mostrar envolventes - sin capacidad de modificar parámetros
+    /*
     auto bounds = getLocalBounds().toFloat().reduced(15.0f, 10.0f);
     auto mousePos = e.position;
     
@@ -1251,10 +1249,13 @@ void TransferFunctionDisplay::mouseDown(const juce::MouseEvent& e)
         default:
             break;
     }
+    */
 }
 
 void TransferFunctionDisplay::mouseDrag(const juce::MouseEvent& e)
 {
+    // DESHABILITADO: No permitir drag de parámetros - solo mostrar envolventes
+    /*
     if (currentDragMode == DragMode::None) return;
     
     auto bounds = getLocalBounds().toFloat().reduced(15.0f, 10.0f);
@@ -1299,12 +1300,16 @@ void TransferFunctionDisplay::mouseDrag(const juce::MouseEvent& e)
     }
     
     lastMousePos = mousePos;
+    */
 }
 
 void TransferFunctionDisplay::mouseUp(const juce::MouseEvent&)
 {
+    // DESHABILITADO: No hay drag mode para resetear
+    /*
     currentDragMode = DragMode::None;
     setMouseCursor(juce::MouseCursor::NormalCursor);
+    */
 }
 
 //==============================================================================
@@ -1460,18 +1465,12 @@ void TransferFunctionDisplay::drawGainReductionHistory(juce::Graphics& g, juce::
     // Crear path suavizado
     if (!grPoints.empty())
     {
-        if (deltaMode)
-        {
-            // En modo DELTA: usar color verde (mismo que el fondo de delta)
-            // Color verde tipo teal/cyan
-            auto deltaGreen = juce::Colour(0x00, 0xC8, 0x96);  // Verde turquesa
-            
-            // Crear gradiente verde para el área
-            juce::ColourGradient grGradient(
-                deltaGreen.withAlpha(0.6f * currentFadeOutFactor), bounds.getX(), bounds.getY(),
-                deltaGreen.darker(0.3f).withAlpha(0.3f * currentFadeOutFactor), bounds.getRight(), bounds.getY(),
-                false
-            );
+        // Modo normal: usar colores morados originales
+        juce::ColourGradient grGradient(
+            DarkTheme::accentSecondary.withAlpha(0.5f * currentFadeOutFactor), bounds.getX(), bounds.getY(),
+            DarkTheme::accentSecondary.darker(0.3f).withAlpha(0.3f * currentFadeOutFactor), bounds.getRight(), bounds.getY(),
+            false
+        );
             
             // Dibujar área bajo la curva - empezar sin offset
             grPath.startNewSubPath(grPoints[0].x, bounds.getY());
@@ -1510,268 +1509,31 @@ void TransferFunctionDisplay::drawGainReductionHistory(juce::Graphics& g, juce::
                     grPath.lineTo(grPoints[i]);
                 }
             }
-            
-            grPath.lineTo(grPoints.back().x, bounds.getY());
-            grPath.closeSubPath();
-            
-            // En modo DELTA: dibujar área rellena verde
-            g.setGradientFill(grGradient);
-            g.fillPath(grPath);
-            
-            // Dibujar la línea verde más brillante
-            juce::Path grLine;
-            grLine.startNewSubPath(grPoints[0]);
-            for (size_t i = 1; i < grPoints.size(); ++i)
-            {
-                grLine.lineTo(grPoints[i]);
-            }
-            g.setColour(deltaGreen.withAlpha(0.95f * currentFadeOutFactor));
-            g.strokePath(grLine, juce::PathStrokeType(2.5f)); // Línea más gruesa
-        }
-        else
+        
+        grPath.lineTo(grPoints.back().x, bounds.getY());
+        grPath.closeSubPath();
+        
+        // Modo normal: No dibujar área rellena para gain reduction
+        // g.setGradientFill(grGradient);
+        // g.fillPath(grPath);
+        
+        // Solo dibujar la línea morada con currentFadeOutFactor
+        juce::Path grLine;
+        grLine.startNewSubPath(grPoints[0]);
+        for (size_t i = 1; i < grPoints.size(); ++i)
         {
-            // Modo normal: usar colores morados originales
-            juce::ColourGradient grGradient(
-                DarkTheme::accentSecondary.withAlpha(0.5f * currentFadeOutFactor), bounds.getX(), bounds.getY(),
-                DarkTheme::accentSecondary.darker(0.3f).withAlpha(0.3f * currentFadeOutFactor), bounds.getRight(), bounds.getY(),
-                false
-            );
-            
-            // Dibujar área bajo la curva - empezar sin offset
-            grPath.startNewSubPath(grPoints[0].x, bounds.getY());
-            grPath.lineTo(grPoints[0]);
-            
-            // Suavizado con spline
-            for (size_t i = 1; i < grPoints.size(); ++i)
-            {
-                if (i < grPoints.size() - 1)
-                {
-                    auto p0 = (i > 1) ? grPoints[i - 2] : grPoints[i - 1];
-                    auto p1 = grPoints[i - 1];
-                    auto p2 = grPoints[i];
-                    auto p3 = (i < grPoints.size() - 1) ? grPoints[i + 1] : grPoints[i];
-                    
-                    for (float t = 0.0f; t < 1.0f; t += 0.2f)
-                    {
-                        float t2 = t * t;
-                        float t3 = t2 * t;
-                        
-                        float x = 0.5f * ((2.0f * p1.x) +
-                                         (-p0.x + p2.x) * t +
-                                         (2.0f * p0.x - 5.0f * p1.x + 4.0f * p2.x - p3.x) * t2 +
-                                         (-p0.x + 3.0f * p1.x - 3.0f * p2.x + p3.x) * t3);
-                        
-                        float y = 0.5f * ((2.0f * p1.y) +
-                                         (-p0.y + p2.y) * t +
-                                         (2.0f * p0.y - 5.0f * p1.y + 4.0f * p2.y - p3.y) * t2 +
-                                         (-p0.y + 3.0f * p1.y - 3.0f * p2.y + p3.y) * t3);
-                        
-                        grPath.lineTo(x, y);
-                    }
-                }
-                else
-                {
-                    grPath.lineTo(grPoints[i]);
-                }
-            }
-            
-            grPath.lineTo(grPoints.back().x, bounds.getY());
-            grPath.closeSubPath();
-            
-            // Modo normal: No dibujar área rellena para gain reduction
-            // g.setGradientFill(grGradient);
-            // g.fillPath(grPath);
-            
-            // Solo dibujar la línea morada con currentFadeOutFactor
-            juce::Path grLine;
-            grLine.startNewSubPath(grPoints[0]);
-            for (size_t i = 1; i < grPoints.size(); ++i)
-            {
-                grLine.lineTo(grPoints[i]);
-            }
-            g.setColour(DarkTheme::accentSecondary.withAlpha(0.9f * currentFadeOutFactor));
-            g.strokePath(grLine, juce::PathStrokeType(2.0f)); // Línea un poco más gruesa para mejor visibilidad
+            grLine.lineTo(grPoints[i]);
         }
+        g.setColour(DarkTheme::accentSecondary.withAlpha(0.9f * currentFadeOutFactor));
+        g.strokePath(grLine, juce::PathStrokeType(2.0f)); // Línea un poco más gruesa para mejor visibilidad
     }
     
     // Dibujar línea central de referencia (0 dB - sin ganancia ni atenuación)
     float centerY = bounds.getY() + bounds.getHeight() * 0.5f;
-    if (deltaMode) {
-        // NUEVO: En modo DELTA hacer la línea de referencia más visible
-        g.setColour(DarkTheme::textPrimary.withAlpha(0.6f * currentFadeOutFactor));
-        g.drawHorizontalLine(static_cast<int>(centerY), bounds.getX(), bounds.getRight());
-        // Añadir línea punteada para mejor distinción
-        juce::Path dashPath;
-        for (float x = bounds.getX(); x < bounds.getRight(); x += 6.0f) {
-            dashPath.addRectangle(x, centerY - 0.5f, 3.0f, 1.0f);
-        }
-        g.setColour(DarkTheme::accent.withAlpha(0.4f * currentFadeOutFactor));
-        g.fillPath(dashPath);
-    } else {
-        // Modo normal: línea sutil original
-        g.setColour(DarkTheme::textSecondary.withAlpha(0.3f * currentFadeOutFactor));
-        g.drawHorizontalLine(static_cast<int>(centerY), bounds.getX(), bounds.getRight());
-    }
+    g.setColour(DarkTheme::textSecondary.withAlpha(0.3f * currentFadeOutFactor));
+    g.drawHorizontalLine(static_cast<int>(centerY), bounds.getX(), bounds.getRight());
 }
 
-void TransferFunctionDisplay::drawDeltaGainReduction(juce::Graphics& g, juce::Rectangle<float> bounds)
-{
-    // NUEVO: Visualización específica para modo DELTA - Simple y efectiva
-    
-    // Obtener valor actual de gain reduction
-    float grValue = currentGainReduction.load(std::memory_order_relaxed);
-    const float currentFadeOutFactor = fadeOutFactor.load(std::memory_order_relaxed);
-    
-    // Color verde para DELTA
-    auto deltaGreen = juce::Colour(0x00, 0xC8, 0x96);  // Verde turquesa
-    
-    // Línea de referencia en la parte superior (0 dB - sin procesamiento)
-    float topOffset = 0.0f; // Posición máxima - sin offset
-    float referenceY = bounds.getY() + topOffset;
-    
-    // Dibujar línea de referencia mejorada en la parte superior
-    g.setColour(DarkTheme::textPrimary.withAlpha(0.6f * currentFadeOutFactor));
-    g.drawHorizontalLine(static_cast<int>(referenceY), bounds.getX(), bounds.getRight());
-    
-    // Añadir línea punteada para mejor distinción
-    juce::Path dashPath;
-    for (float x = bounds.getX(); x < bounds.getRight(); x += 6.0f) {
-        dashPath.addRectangle(x, referenceY - 0.5f, 3.0f, 1.0f);
-    }
-    g.setColour(DarkTheme::accent.withAlpha(0.4f * currentFadeOutFactor));
-    g.fillPath(dashPath);
-    
-    // Usar misma lógica que grMeter - siempre procesar (no solo con > 0.1f)
-    // COPIA EXACTA de la implementación del grMeter (líneas 508-516 GradientMeter.h)
-    
-    // Rango de trabajo: 0 dB (sin reducción) a -100 dB (máxima reducción) - IGUAL QUE grMeter
-    const float minReduction = 0.0f;    // Sin reducción (sin área)
-    const float maxReduction = -100.0f;  // Máxima reducción (área completa)
-    
-    // Mapeo correcto: valores más negativos = más área verde (IGUAL QUE grMeter)
-    float fillRatio = juce::jmap(grValue, minReduction, maxReduction, 0.0f, 1.0f);
-    fillRatio = juce::jlimit(0.0f, 1.0f, fillRatio);
-    
-    // Altura disponible para la visualización (desde la línea de referencia hacia abajo)
-    float availableHeight = bounds.getHeight() - topOffset - 2.0f; // Margen inferior reducido para mayor altura
-    
-    // Calcular altura de área (0 dB = sin área, -100 dB = área completa) - IGUAL QUE grMeter
-    float barHeight = availableHeight * fillRatio;
-    
-    // Siempre partir desde la línea de referencia hacia abajo
-    float barY = referenceY;
-    
-    // Solo dibujar si hay altura significativa (similar al grMeter que chequea > 1.0f)
-    if (barHeight > 1.0f) {
-        // Crear área rellena que crece desde arriba hacia abajo
-        juce::Rectangle<float> grRect(bounds.getX(), barY, bounds.getWidth(), barHeight);
-        
-        // Gradiente vertical más sutil y elegante
-        juce::ColourGradient grGradient(
-            deltaGreen.withAlpha(0.4f * currentFadeOutFactor), bounds.getCentreX(), grRect.getY(),
-            deltaGreen.darker(0.3f).withAlpha(0.25f * currentFadeOutFactor), bounds.getCentreX(), grRect.getBottom(),
-            false
-        );
-        
-        g.setGradientFill(grGradient);
-        g.fillRect(grRect);
-        
-        // Línea inferior sutil y difuminada para definir el nivel actual de GR
-        g.setColour(deltaGreen.withAlpha(0.3f * currentFadeOutFactor));
-        g.drawHorizontalLine(static_cast<int>(barY + barHeight), bounds.getX(), bounds.getRight());
-    }
-}
+// ELIMINADO: drawDeltaGainReduction - ya no se utiliza el modo DELTA
 
-//==============================================================================
-// MÉTODOS DE HISTOGRAMA DELTA ESPECÍFICO
-//==============================================================================
-
-void TransferFunctionDisplay::updateDeltaHistory(float grDb) noexcept
-{
-    // Actualizar buffer circular con nuevo valor (Thread-Safe)
-    int currentIndex = deltaHistoryIndex.load(std::memory_order_relaxed);
-    deltaGrHistory[currentIndex].store(grDb, std::memory_order_relaxed);
-    
-    // Avanzar índice circular
-    int nextIndex = (currentIndex + 1) % deltaHistorySize;
-    deltaHistoryIndex.store(nextIndex, std::memory_order_relaxed);
-}
-
-void TransferFunctionDisplay::drawDeltaGainReductionHistory(juce::Graphics& g, juce::Rectangle<float> bounds)
-{
-    const float currentFadeOutFactor = fadeOutFactor.load(std::memory_order_relaxed);
-    const int readIndex = deltaHistoryIndex.load(std::memory_order_relaxed);
-    
-    // Color verde para DELTA
-    auto deltaGreen = juce::Colour(0x00, 0xC8, 0x96);  // Verde turquesa
-    
-    // Crear path para histograma
-    juce::Path grPath;
-    std::vector<juce::Point<float>> grPoints;
-    
-    // Recolectar puntos del buffer DELTA
-    for (int i = 0; i < deltaHistorySize; ++i)
-    {
-        int samplesBack = deltaHistorySize - i;
-        int bufferIndex = (readIndex - samplesBack + deltaHistorySize) % deltaHistorySize;
-        
-        float grDb = deltaGrHistory[bufferIndex].load(std::memory_order_relaxed);
-        
-        // Posición X - distribuir a lo ancho
-        float normalizedTime = float(i) / float(deltaHistorySize - 1);
-        float x = bounds.getX() + normalizedTime * bounds.getWidth();
-        
-        // Posición Y - mapear gain reduction usando misma lógica que área estática
-        // Usar rango fijo -100dB como el grMeter
-        constexpr float minReduction = 0.0f;    // Sin reducción (parte superior)
-        constexpr float maxReduction = -100.0f;  // Máxima reducción (parte inferior)
-        
-        float fillRatio = juce::jmap(grDb, minReduction, maxReduction, 0.0f, 1.0f);
-        fillRatio = juce::jlimit(0.0f, 1.0f, fillRatio);
-        
-        // Y desde arriba hacia abajo (como área estática)
-        float y = bounds.getY() + fillRatio * bounds.getHeight();
-        
-        grPoints.push_back({x, y});
-    }
-    
-    // Crear área bajo la curva con spline suavizado
-    if (!grPoints.empty())
-    {
-        // Gradiente vertical elegante
-        juce::ColourGradient grGradient(
-            deltaGreen.withAlpha(0.4f * currentFadeOutFactor), bounds.getCentreX(), bounds.getY(),
-            deltaGreen.darker(0.3f).withAlpha(0.25f * currentFadeOutFactor), bounds.getCentreX(), bounds.getBottom(),
-            false
-        );
-        
-        // Crear área desde el top hacia la curva
-        grPath.startNewSubPath(grPoints[0].x, bounds.getY());
-        grPath.lineTo(grPoints[0]);
-        
-        // Spline suavizado simple (interpolación lineal suficiente para tiempo real)
-        for (size_t i = 1; i < grPoints.size(); ++i)
-        {
-            grPath.lineTo(grPoints[i]);
-        }
-        
-        // Cerrar área
-        grPath.lineTo(grPoints.back().x, bounds.getY());
-        grPath.closeSubPath();
-        
-        // Dibujar área rellena
-        g.setGradientFill(grGradient);
-        g.fillPath(grPath);
-        
-        // Línea superior para definir la curva
-        juce::Path curvePath;
-        curvePath.startNewSubPath(grPoints[0]);
-        for (size_t i = 1; i < grPoints.size(); ++i)
-        {
-            curvePath.lineTo(grPoints[i]);
-        }
-        
-        g.setColour(deltaGreen.withAlpha(0.8f * currentFadeOutFactor));
-        g.strokePath(curvePath, juce::PathStrokeType(1.0f));
-    }
-}
+// ELIMINADO: Métodos de histograma DELTA específico - ya no se utilizan

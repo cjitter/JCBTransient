@@ -1,7 +1,7 @@
 //==============================================================================
 //
 //  Copyright 2025 Juan Carlos Blancas
-//  This file is part of JCBExpander and is licensed under the GNU General Public License v3.0 or later.
+//  This file is part of JCBTransient and is licensed under the GNU General Public License v3.0 or later.
 //
 //==============================================================================
 #pragma once
@@ -46,7 +46,7 @@ public:
           smoothedLevel{-80.0f},
           peakLevel{-80.0f},
           peakHoldTimer(0),
-          isDeltaMode(false),
+          // ELIMINADO: isDeltaMode - ya no se utiliza
           isSoloScMode(false)
     {
         // Sin Timer inheritance - control centralizado desde PluginEditor
@@ -64,14 +64,7 @@ public:
         }
     }
     
-    void setDeltaMode(bool delta) noexcept
-    {
-        if (isDeltaMode != delta) {
-            isDeltaMode = delta;
-            resized(); // Actualizar gradiente
-            repaint();
-        }
-    }
+    // ELIMINADO: setDeltaMode - DELTA ya no cambia colores de medidores
 
     void setSoloScMode(bool soloSc) noexcept
     {
@@ -192,8 +185,7 @@ public:
         const auto bounds = getLocalBounds().toFloat();
         if (isSoloScMode)
             gradient = DarkTheme::createSoloScMeterGradient(bounds);
-        else if (isDeltaMode)
-            gradient = DarkTheme::createDeltaMeterGradient(bounds);
+        // ELIMINADO: Gradiente DELTA - ya no se utiliza
         else
             gradient = DarkTheme::createMeterGradient(bounds);
     }
@@ -212,7 +204,7 @@ private:
     std::atomic<float> smoothedLevel;
     std::atomic<float> peakLevel;
     int peakHoldTimer;
-    bool isDeltaMode;
+    // ELIMINADO: bool isDeltaMode - ya no se utiliza
     bool isSoloScMode;
 };
 
@@ -238,8 +230,8 @@ public:
           smoothedLevel{-80.0f},
           peakLevel{-80.0f},
           peakHoldTimer(0),
-          isSoloScMode(false),
-          isDeltaMode(false)
+          isSoloScMode(false)
+          // ELIMINADO: isDeltaMode - ya no se utiliza
     {
         // Control centralizado desde PluginEditor a 60Hz
     }
@@ -265,14 +257,7 @@ public:
         }
     }
     
-    void setDeltaMode(bool delta) noexcept
-    {
-        if (isDeltaMode != delta) {
-            isDeltaMode = delta;
-            resized(); // Actualizar gradiente
-            repaint();
-        }
-    }
+    // ELIMINADO: setDeltaMode - DELTA ya no cambia colores de medidores
     
     //==========================================================================
     // MÉTODO DE ACTUALIZACIÓN (LLAMADO DESDE PLUGINEDITOR A 60HZ)
@@ -380,8 +365,7 @@ public:
         // Usar gradiente apropiado basado en el modo
         if (isSoloScMode)
             gradient = DarkTheme::createSoloScMeterGradient(bounds);
-        else if (isDeltaMode)
-            gradient = DarkTheme::createDeltaMeterGradient(bounds);
+        // ELIMINADO: Gradiente DELTA - ya no se utiliza
         else
             gradient = DarkTheme::createSidechainMeterGradient(bounds);
     }
@@ -401,7 +385,7 @@ private:
     std::atomic<float> peakLevel;
     int peakHoldTimer;
     bool isSoloScMode;
-    bool isDeltaMode;
+    // ELIMINADO: bool isDeltaMode - ya no se utiliza
 };
 
 //==============================================================================
@@ -424,8 +408,8 @@ public:
           smoothedValue{0.0f},
           targetValue{0.0f},
           isZoomed(false),
-          peakValue{0.0f},
-          isDeltaMode(false)
+          peakValue{0.0f}
+          // ELIMINADO: isDeltaMode - ya no se utiliza
     {
         // Control centralizado desde PluginEditor a 60Hz
     }
@@ -444,14 +428,7 @@ public:
     }
     
     // Método para cambiar a modo DELTA
-    void setDeltaMode(bool delta) noexcept
-    {
-        if (isDeltaMode != delta) {
-            isDeltaMode = delta;
-            resized(); // Actualizar gradiente
-            repaint();
-        }
-    }
+    // ELIMINADO: setDeltaMode - DELTA ya no cambia colores de medidores
     
     //==========================================================================
     // MÉTODO DE ACTUALIZACIÓN (LLAMADO DESDE PLUGINEDITOR A 60HZ)
@@ -538,10 +515,9 @@ public:
     void resized() override
     {
         const auto bounds = getLocalBounds().toFloat();
-        if (isDeltaMode)
-            gradient = DarkTheme::createDeltaGainReductionGradient(bounds);
-        else
-            gradient = DarkTheme::createGainReductionGradient(bounds);
+        // ELIMINADO: Gradiente DELTA para gain reduction - ya no se utiliza
+        // Usar siempre el gradiente estándar
+        gradient = DarkTheme::createGainReductionGradient(bounds);
     }
     
 private:
@@ -555,7 +531,7 @@ private:
     std::atomic<float> targetValue;
     bool isZoomed;
     std::atomic<float> peakValue;
-    bool isDeltaMode;
+    // ELIMINADO: bool isDeltaMode - ya no se utiliza
 };
 
 //==============================================================================
@@ -579,7 +555,7 @@ public:
           smoothedLevel{-80.0f},
           peakLevel{-80.0f},
           peakHoldTimer(0),
-          isDeltaMode(false),
+          // ELIMINADO: isDeltaMode - ya no se utiliza
           isSoloScMode(false),
           isBypassMode(false)
     {
@@ -598,14 +574,7 @@ public:
         }
     }
     
-    void setDeltaMode(bool delta) noexcept
-    {
-        if (isDeltaMode != delta) {
-            isDeltaMode = delta;
-            resized(); // Actualizar gradiente
-            repaint();
-        }
-    }
+    // ELIMINADO: setDeltaMode - DELTA ya no cambia colores de medidores
     
     void setSoloScMode(bool soloSc) noexcept
     {
@@ -732,8 +701,7 @@ public:
             gradient = DarkTheme::createMeterGradient(bounds);  // Usar gradiente de entrada cuando bypass activo
         else if (isSoloScMode)
             gradient = DarkTheme::createSoloScOutputMeterGradient(bounds);
-        else if (isDeltaMode)
-            gradient = DarkTheme::createDeltaOutputMeterGradient(bounds);
+        // ELIMINADO: Gradiente DELTA para output meters - ya no se utiliza
         else
             gradient = DarkTheme::createOutputMeterGradient(bounds);
     }
@@ -752,7 +720,7 @@ private:
     std::atomic<float> smoothedLevel;
     std::atomic<float> peakLevel;
     int peakHoldTimer;
-    bool isDeltaMode;
+    // ELIMINADO: bool isDeltaMode - ya no se utiliza
     bool isSoloScMode;
     bool isBypassMode;
 };

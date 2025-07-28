@@ -1,10 +1,9 @@
-
-![JCBExpander Interface](Assets/screenshot.png)
+![JCBTransient Interface](Assets/screenshot.png)
 
 Plugin expansor de audio desarrollado en gen~, exportado con [gen~ Plugin Export](https://github.com/Cycling74/gen-plugin-export) y finalizado con el framework C++ [JUCE](https://github.com/juce-framework/JUCE). Este plugin forma parte de un conjunto de herramientas didácticas que utilizo en la asignatura de Técnicas de Grabación y Masterización para Música Electroacústica del [MCE](https://katarinagurska.com/curso-of/master-de-composicion-electroacustica-mce/). Originalmente creado con JUCE 6 hace unos años, el proyecto ha evolucionado significativamente en su interfaz gráfica y funcionalidad gracias al desarrollo con Claude Code durante junio de 2025. Para más detalles técnicos, consulta [NOTAS.md](NOTAS.md).
 
 ## Instalación macOS
-1. Descarga el archivo DMG desde la página de [Releases](https://github.com/cjitter/JCBExpander/releases)
+1. Descarga el archivo DMG desde la página de [Releases](https://github.com/cjitter/JCBTransient/releases)
 2. Abre el DMG y ejecuta el instalador
 3. El instalador colocará automáticamente los tipos de plugins seleccionados en las ubicaciones correctas del sistema:
    - VST3: `/Library/Audio/Plug-Ins/VST3/`
@@ -31,8 +30,8 @@ Plugin expansor de audio desarrollado en gen~, exportado con [gen~ Plugin Export
 
 1. Clona el repositorio:
 ```bash
-git clone https://github.com/cjitter/JCBExpander.git
-cd JCBExpander
+git clone https://github.com/cjitter/JCBTransient.git
+cd JCBTransient
 ```
 
 2. **Configuración del proyecto**:
@@ -67,8 +66,7 @@ cmake --build build-release   # Para Release
 - **Modo de detección** sharp con sliding RMS de ventana variable y control adicional de suavizado.
 - **Ajuste interpolado independiente de reacción pico/RMS**.
 - **Expansión con softknee** de segundo orden con transición gradual (1:1 a 6:1).
-- **Controles estándar**: threshold (-60 a 0 dB), range (-100 a 0 dB), ratio (1:1 a 20:1), knee (1 a 10 dB), attack (0.1 a 250 ms), hold (0 a 250 ms), release (0.1 a 1000 ms).
-- **Control de rango** (-100 a 0 dB) para limitar la expansión máxima.
+- **Controles estándar**:
 - **Modo Delta para monitorización** de la señal diferencia (entrada vs salida).
 - **Softclipping asimétrico**, aplicado tras expansión y makeup gain.
 - **Control Dry/Wet (0 a 100%)** para mezcla de señal procesada.
@@ -131,4 +129,4 @@ Los tests validan los formatos VST3 y AU del plugin.
 
 ---
 
-*© 2025 Juan Carlos Blancas – JCBExpander v0.9.1 beta*
+*© 2025 Juan Carlos Blancas – JCBTransient v0.9.1 beta*

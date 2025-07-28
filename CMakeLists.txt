@@ -2,24 +2,24 @@
 #
 #  Copyright 2025 Juan Carlos Blancas
 #
-#  JCBExpander is free software: you can redistribute it and/or modify
+#  JCBTransient is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation, either version 3 of the License, or
 #  (at your option) any later version.
 #
-#  JCBExpander is distributed in the hope that it will be useful,
+#  JCBTransient is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with JCBExpander. If not, see <http://www.gnu.org/licenses/>.
+#  along with JCBTransient. If not, see <http://www.gnu.org/licenses/>.
 #
 # ==============================================================================
 
 cmake_minimum_required(VERSION 3.20)
 
-project(JCBExpander VERSION 0.9.1)
+project(JCBTransient VERSION 0.9.0)
 
 # Configuración C++
 set(CMAKE_CXX_STANDARD 20)
@@ -65,19 +65,19 @@ else()
 endif()
 
 # Crear el plugin usando la lista explícita
-juce_add_plugin(JCBExpander
+juce_add_plugin(JCBTransient
         # Información básica del plugin
-        PLUGIN_NAME "JCBExpander"
-        PRODUCT_NAME "JCBExpander"
+        PLUGIN_NAME "JCBTransient"
+        PRODUCT_NAME "JCBTransient"
         VERSION 0.9.1
         DESCRIPTION "Stereo-linked feedforward compressor with external sidechain, parallel processing and lookahead"
 
         # Información de la empresa
         COMPANY_NAME "Coeval"
         COMPANY_WEBSITE "https://github.com/cjitter"
-        BUNDLE_ID "com.coeval.JCBExpander"
+        BUNDLE_ID "com.coeval.JCBTransient"
         PLUGIN_MANUFACTURER_CODE "CoeV"
-        PLUGIN_CODE "CoE2"
+        PLUGIN_CODE "CoE3"
 
         # Formatos soportados
         FORMATS ${PLUGIN_FORMATS}
@@ -98,7 +98,7 @@ juce_add_plugin(JCBExpander
 )
 
 # Archivos fuente del plugin
-target_sources(JCBExpander PRIVATE
+target_sources(JCBTransient PRIVATE
         # Core plugin files
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -110,14 +110,14 @@ target_sources(JCBExpander PRIVATE
         Source/Components/Windows/CodeWindow.cpp
         
         # Gen~ DSP engine
-        exported-code/JCBExpander.cpp
+        exported-code/JCBTransient.cpp
         exported-code/gen_dsp/genlib.cpp
         exported-code/gen_dsp/json.c
         exported-code/gen_dsp/json_builder.c
 )
 
 # Añadir recursos binarios
-juce_add_binary_data(JCBExpander_BinaryData
+juce_add_binary_data(JCBTransient_BinaryData
         SOURCES
         Assets/fondo.png
         Assets/bypass.png
@@ -138,20 +138,20 @@ juce_add_binary_data(JCBExpander_BinaryData
 )
 
 # Linkear binary data al plugin
-target_link_libraries(JCBExpander PRIVATE
-        JCBExpander_BinaryData
+target_link_libraries(JCBTransient PRIVATE
+        JCBTransient_BinaryData
 )
 
 
 # Includes
-target_include_directories(JCBExpander PRIVATE
+target_include_directories(JCBTransient PRIVATE
         Source/
         exported-code/
         exported-code/gen_dsp/
 )
 
 # Módulos JUCE - Solo los necesarios (DSP manejado por Gen~)
-target_link_libraries(JCBExpander PRIVATE
+target_link_libraries(JCBTransient PRIVATE
         juce::juce_audio_basics
         juce::juce_audio_plugin_client
         juce::juce_audio_processors
@@ -164,7 +164,7 @@ target_link_libraries(JCBExpander PRIVATE
 )
 
 # Definiciones del compilador - Esenciales + optimizaciones
-target_compile_definitions(JCBExpander PUBLIC
+target_compile_definitions(JCBTransient PUBLIC
         # Configuraciones básicas estándar
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
@@ -178,7 +178,7 @@ target_compile_definitions(JCBExpander PUBLIC
 )
 
 # Flags del compilador para macOS (Clang)
-target_compile_options(JCBExpander PRIVATE
+target_compile_options(JCBTransient PRIVATE
     -Wall -Wextra -Wno-unused-parameter
 )
 
@@ -188,12 +188,12 @@ enable_testing()
 include(Pluginval)
 
 # Agregar tests de pluginval para formatos compatibles (VST3, AU)
-add_pluginval_build_fixture(JCBExpander_VST3)
-add_pluginval_tests(JCBExpander_VST3)
+add_pluginval_build_fixture(JCBTransient_VST3)
+add_pluginval_tests(JCBTransient_VST3)
 
-if(TARGET JCBExpander_AU)
-    add_pluginval_build_fixture(JCBExpander_AU)
-    add_pluginval_tests(JCBExpander_AU)
+if(TARGET JCBTransient_AU)
+    add_pluginval_build_fixture(JCBTransient_AU)
+    add_pluginval_tests(JCBTransient_AU)
 endif()
 
 # Instalación automática para macOS (se puede desactivar más arriba con JUCE_AUTO_INSTALL_PLUGINS OFF)
@@ -204,41 +204,41 @@ if(JUCE_AUTO_INSTALL_PLUGINS)
     set(AAX_DIR "/Applications/Pro Tools Developer/Plug-Ins")
 
     # Instalación VST3 (carpeta de usuario)
-    if(TARGET JCBExpander_VST3)
-        add_custom_command(TARGET JCBExpander_VST3 POST_BUILD
+    if(TARGET JCBTransient_VST3)
+        add_custom_command(TARGET JCBTransient_VST3 POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Installing VST3 to user directory (${VST3_DIR})..."
             COMMAND ${CMAKE_COMMAND} -E make_directory "${VST3_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E remove_directory "${VST3_DIR}/JCBExpander.vst3"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory "${VST3_DIR}/JCBTransient.vst3"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_BINARY_DIR}/JCBExpander_artefacts/$<CONFIG>/VST3/JCBExpander.vst3"
-                "${VST3_DIR}/JCBExpander.vst3"
+                "${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/$<CONFIG>/VST3/JCBTransient.vst3"
+                "${VST3_DIR}/JCBTransient.vst3"
             COMMENT "Installing VST3 plugin to ${VST3_DIR} (user folder)"
             VERBATIM
         )
     endif()
 
     # Instalación AU (carpeta de usuario)
-    if(TARGET JCBExpander_AU)
-        add_custom_command(TARGET JCBExpander_AU POST_BUILD
+    if(TARGET JCBTransient_AU)
+        add_custom_command(TARGET JCBTransient_AU POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Installing AU to user directory (${AU_DIR})..."
             COMMAND ${CMAKE_COMMAND} -E make_directory "${AU_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E remove_directory "${AU_DIR}/JCBExpander.component"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory "${AU_DIR}/JCBTransient.component"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_BINARY_DIR}/JCBExpander_artefacts/$<CONFIG>/AU/JCBExpander.component"
-                "${AU_DIR}/JCBExpander.component"
+                "${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/$<CONFIG>/AU/JCBTransient.component"
+                "${AU_DIR}/JCBTransient.component"
             COMMENT "Installing AU plugin to ${AU_DIR} (user folder)"
             VERBATIM
         )
     endif()
 
     # Instalación AAX
-    if(TARGET JCBExpander_AAX)
-        add_custom_command(TARGET JCBExpander_AAX POST_BUILD
+    if(TARGET JCBTransient_AAX)
+        add_custom_command(TARGET JCBTransient_AAX POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Installing AAX to AAX_DIR..."
-            COMMAND ${CMAKE_COMMAND} -E remove_directory "${AAX_DIR}/JCBExpander.aaxplugin"
+            COMMAND ${CMAKE_COMMAND} -E remove_directory "${AAX_DIR}/JCBTransient.aaxplugin"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_BINARY_DIR}/JCBExpander_artefacts/$<CONFIG>/AAX/JCBExpander.aaxplugin"
-                "${AAX_DIR}/JCBExpander.aaxplugin"
+                "${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/$<CONFIG>/AAX/JCBTransient.aaxplugin"
+                "${AAX_DIR}/JCBTransient.aaxplugin"
             COMMENT "Installing AAX plugin to ${AAX_DIR}..."
             VERBATIM
         )
@@ -246,8 +246,8 @@ if(JUCE_AUTO_INSTALL_PLUGINS)
 endif()
 
 # Información de configuración
-message(STATUS "JCBExpander ${PROJECT_VERSION} - Platform: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "Build directory: ${CMAKE_CURRENT_BINARY_DIR}/JCBExpander_artefacts/")
+message(STATUS "JCBTransient ${PROJECT_VERSION} - Platform: ${CMAKE_SYSTEM_NAME}")
+message(STATUS "Build directory: ${CMAKE_CURRENT_BINARY_DIR}/JCBTransient_artefacts/")
 
 # Estado del SDK AAX
 if(JUCE_BUILD_AAX)
