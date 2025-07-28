@@ -1,48 +1,3 @@
-// =============================================================================
-// FUNCIÓN EXPANSOR REDISEÑADA - Comportamiento progresivo
-// =============================================================================
-
-// Función SIMPLE del expansor
-softkneeSecondOrderExpansor(xg, T, R, W) {
-    _softkneeSecondOrderExpansor_ret_1 = 0;
-    
-    // Zona sutil extendida (1.0 a 6.0) - expansión muy reducida
-    if(R <= 6.0) {
-        // Factor que va de 0 a 1 entre ratio 1 y 6
-        subtle_factor = clamp((R - 1.0) / 5.0, 0, 1);
-        // Curva muy suave que gradualmente llega a 0.5 en ratio=6
-        gentle_expansion = pow(subtle_factor, 2.5) * 0.5;  // Máximo 50% de expansión en ratio=6
-        
-        // Calcular expansión normal
-        normal_expansion = 0;
-        if((2 * (xg - T)) > W) {
-            normal_expansion = xg;
-        }
-        else if((2 * (abs(xg - T))) > ((-1) * W)) {
-            normal_expansion = xg - ((pow((xg - T) - (W / 2), 2) * (R - 1)) / (2 * W));
-        }
-        else if((2 * (xg - T)) <= ((-1) * W)) {
-            normal_expansion = T + ((xg - T) / R);
-        }
-        
-        // Aplicar expansión gradual y sutil
-        _softkneeSecondOrderExpansor_ret_1 = mix(xg, normal_expansion, gentle_expansion);
-    }
-    else {
-        // A partir de 6:1 - expansión normal y más agresiva
-        if((2 * (xg - T)) > W) {
-            _softkneeSecondOrderExpansor_ret_1 = xg;
-        }
-        else if((2 * (abs(xg - T))) > ((-1) * W)) {
-            _softkneeSecondOrderExpansor_ret_1 = xg - ((pow((xg - T) - (W / 2), 2) * (R - 1)) / (2 * W));
-        }
-        else if((2 * (xg - T)) <= ((-1) * W)) {
-            _softkneeSecondOrderExpansor_ret_1 = T + ((xg - T) / R);
-        }
-    }
-    
-    return _softkneeSecondOrderExpansor_ret_1;
-}
 
 // =============================================================================
 // PARÁMETROS DEL EXPANSOR
@@ -50,16 +5,18 @@ softkneeSecondOrderExpansor(xg, T, R, W) {
 
 // Parámetros principales
 Param a_TRIM(-12, min=-12, default=0, max=12);        // Input trim gain (dB)
-Param b_THD(-60, min=-60, default=-18, max=0);        // Threshold (dB)
-Param c_RATIO(1, min=0.95, default=4, max=40);        // Expansion ratio (aumentado a 40)
-Param d_ATK(0.1, min=0.1, default=5, max=250);        // Attack time (ms)
-Param e_REL(0.1, min=0.1, default=30, max=1000);      // Release time (ms)
 
-Param f_HOLD(0, min=0, default=0, max=500);           // Hold time (ms)
+Param b_ATTACK_GAIN(0, min=-18, default=0, max=18);   // Attack enhancement/reduction (dB)
+Param c_SUSTAIN_GAIN(0, min=-18, default=0, max=18);  // Sustain enhancement/reduction (dB)
+
+Param q_SENSITIVITY(0.5, min=0, default=0.5, max=1);  // Detection sensitivity (0-1)
+
+Param d_ATK(0.1, min=0.1, default=1, max=250);
+Param e_REL(1, min=1, default=10, max=500);
+Param f_HOLD(0, min=0, default=0, max=500);
 
 Param i_MAKEUP(-12, min=-12, default=0, max=12);      // Makeup gain (dB)
-Param h_RANGE(-60, min=-60, default=-20, max=0);      // Range width (dB) - para expansor
-Param q_KNEE(1, min=1, default=5, max=20);  		  // min=1 para evitar clicks
+//Param h_RANGE(-20, min=-100, default=-20, max=0);      // Range width (dB) - para expansor
 
 Param g_REACT(0, min=0, default=0, max=1);            // Peak/RMS mix (0=Peak, 1=RMS)
 Param z_SMOOTH(0, min=0, default=0, max=1);           // Extra smoothing amount
@@ -80,11 +37,11 @@ Param m_SOLOSC(0, min=0, default=0, max=1);           // Solo sidechain signal
 Param o_DRYWET(0, min=0, default=1, max=1);           // Dry/Wet mix (0=Dry, 1=Wet)
 
 Param v_DELTA(0, min=0, default=0, max=1);            // Delta mode (difference signal)
+Param h_DELTAMODE(0, min=0, default=0, max=2);     // Delta Mode: 0=Attack, 1=Both, 2=Sustain
 
 // Características avanzadas
 Param n_LOOKAHEAD(0, min=0, default=0, max=10);       // Lookahead time (ms)
 
-//Param x_AUTOGAIN(0, min=0, default=0, max=1);         // Auto makeup gain enable
 Param u_SOFTCLIP(0, min=0, default=0, max=1);         // Output saturation amount (0=Off, 1=Full)
 
 // Control
@@ -94,12 +51,19 @@ Param p_BYPASS(0, min=0, default=0, max=1);           // Bypass switch
 // HISTORIAS Y DELAYS
 // =============================================================================
 
-// Historias para smoothing de parámetros
+// Historias para detección de transientes (usadas en detectTransientEnhanced)
+History envelopeHistory(0);           // Envolvente anterior
+History transientSmoothHistory(0);    // Suavizado de detección
+History diffHistory1(0);              // Para filtro diferenciador
+History diffHistory2(0);              // Para suavizado diferenciador
+
+// Historias para Transient Designer (NUEVAS)
+History attackGainHistory(0);          // Para attack gain smoothing
+History sustainGainHistory(0);         // Para sustain gain smoothing
+History sensitivityHistory(0);         // Para sensitivity smoothing
+
+
 History deltaModeHistory(0);           // Para delta mode amount
-
-//History autoGainHistory(0);            // Para auto makeup gain enable
-
-History thresholdHistory(0);           // Para threshold value
 History makeupGainHistory(0);          // Para makeup gain amount
 History soloSidechainHistory(0);       // Para solo sidechain amount
 History bypassAmountHistory(0);        // Para bypass amount
@@ -107,13 +71,7 @@ History keyMixHistory(0);              // Para key input mix
 History dryWetMixHistory(0);           // Para dry/wet mix
 History trimHistory(0);                // Para input trim gain
 History sidechainTrimHistory(0);       // Para sidechain trim gain
-
-// Historias adicionales para smoothing de parámetros
-History ratioHistory(0);              // Para compression ratio
-
 History rangeHistory(0);               // Para range width (en lugar de kneeHistory)
-History kneeExpHistory(0);             // Nueva historia para knee del expansor
-
 History reactHistory(0);              // Para peak/RMS mix
 History smoothAmountHistory(0);       // Para extra smoothing
 History lookaheadHistory(0);          // Para lookahead (con factor especial)
@@ -121,7 +79,6 @@ History hpfFreqHistory(0);            // Para HPF frequency
 History lpfFreqHistory(0);            // Para LPF frequency
 History scEnableHistory(0);           // Para sidechain filter enable
 History softclipHistory(0);           // Para softclip amount
-
 History atkHistory(0);                // Para attack time
 History relHistory(0);                // Para release time
 
@@ -205,6 +162,21 @@ History hold_counter_sharp(0);   // Contador de samples en hold
 // VARIABLES DE SALIDA Y CONSTANTES
 // =============================================================================
 
+debug_transient_amount = 0;  // AGREGAR
+
+// Variables globales para debug
+debug_function_called = 0;
+debug_envelope_linear = 0;
+debug_total_gain = 0;
+
+// Variables globales para debug
+debug_diff_value = 0;
+debug_transient_value = 0;
+
+// VARIABLES GLOBALES PARA RETORNO DE FUNCIONES
+new_diff_value = 0;
+new_smooth_value = 0;
+
 // Variables para almacenar las salidas procesadas
 leftProcessedOutput = 0;               // Salida procesada canal izquierdo
 rightProcessedOutput = 0;              // Salida procesada canal derecho
@@ -218,6 +190,7 @@ LOOKAHEAD_SMOOTH_FACTOR = 0.9999;      // Factor ultra lento para lookahead
 
 // PROCESAMIENTO PRINCIPAL
 
+
 // =============================================================================
 // SMOOTHING DE PARÁMETROS - Filtro de primer orden para evitar clicks
 // =============================================================================
@@ -230,6 +203,18 @@ LOOKAHEAD_SMOOTH_FACTOR = 0.9999;      // Factor ultra lento para lookahead
 // Delta Mode Amount - Cantidad de señal diferencia (experimental)
 smoothDeltaMode = (deltaModeHistory * SMOOTH_HISTORY_FACTOR) + (v_DELTA * SMOOTH_PARAM_FACTOR);
 deltaModeHistoryNext = fixdenorm(smoothDeltaMode);
+
+// Attack Gain Smoothing - Ganancia de transientes
+smoothAttackGain = (attackGainHistory * SMOOTH_HISTORY_FACTOR) + (b_ATTACK_GAIN * SMOOTH_PARAM_FACTOR);
+attackGainHistoryNext = fixdenorm(smoothAttackGain);
+
+// Sustain Gain Smoothing - Ganancia de sustain
+smoothSustainGain = (sustainGainHistory * SMOOTH_HISTORY_FACTOR) + (c_SUSTAIN_GAIN * SMOOTH_PARAM_FACTOR);
+sustainGainHistoryNext = fixdenorm(smoothSustainGain);
+
+// Sensitivity Smoothing - Sensibilidad de detección
+smoothSensitivity = (sensitivityHistory * SMOOTH_HISTORY_FACTOR) + (q_SENSITIVITY * SMOOTH_PARAM_FACTOR);
+sensitivityHistoryNext = fixdenorm(smoothSensitivity);
 
 // =============================================================================
 // IMPLEMENTACIÓN DELTA MODE - Bypass automático de procesamiento posterior
@@ -246,10 +231,6 @@ deltaWetValue = int(1);     // Valor para forzar dry/wet a 100% wet
 
 // Aplicar bypass condicional basado en DELTA
 //effectiveAutoGain = mix(smoothAutoGain, deltaBypassValue, smoothDeltaMode);
-
-// Threshold Level - Umbral de compresión en dB
-smoothThresholdDb = (thresholdHistory * SMOOTH_HISTORY_FACTOR) + (b_THD * SMOOTH_PARAM_FACTOR);
-thresholdHistoryNext = fixdenorm(smoothThresholdDb);
 
 // Filter Order Smoothing - Suavizado de orden de filtros
 smoothHpfOrder = (hpfOrderHistory * SMOOTH_HISTORY_FACTOR) + (j_HPFORDER * SMOOTH_PARAM_FACTOR);
@@ -276,17 +257,9 @@ else {
     lpfOrderDiscrete = 1;      // 24 dB/oct (0.5 - 1.0)
 }
 
-// Ratio Smoothing
-smoothRatio = (ratioHistory * SMOOTH_HISTORY_FACTOR) + (c_RATIO * SMOOTH_PARAM_FACTOR);
-ratioHistoryNext = fixdenorm(smoothRatio);
-
-// Range Smoothing
-smoothRange = (rangeHistory * SMOOTH_HISTORY_FACTOR) + (h_RANGE * SMOOTH_PARAM_FACTOR);
+// Delta Mode Smoothing (reemplaza a Range, mantenemos variable smoothRange de momento)
+smoothRange = (rangeHistory * SMOOTH_HISTORY_FACTOR) + (h_DELTAMODE * SMOOTH_PARAM_FACTOR);
 rangeHistoryNext = fixdenorm(smoothRange);
-
-// Knee Smoothing
-smoothKneeExp = (kneeExpHistory * SMOOTH_HISTORY_FACTOR) + (q_KNEE * SMOOTH_PARAM_FACTOR);
-kneeExpHistoryNext = fixdenorm(smoothKneeExp);
 
 // React (Peak/RMS) Smoothing
 smoothReact = (reactHistory * SMOOTH_HISTORY_FACTOR) + (g_REACT * SMOOTH_PARAM_FACTOR);
@@ -730,144 +703,266 @@ sidechainTrimCompensated = sidechainDetectionSignal * trimCompensationFactor; //
 normalizedSidechainSignal = sidechainTrimCompensated; // Señal compensada para monitoreo
 
 // =============================================================================
-// PROCESAMIENTO DE SALIDA - Canal Izquierdo
+// PROCESAMIENTO DE SALIDA - Canal Izquierdo - VERSIÓN COMPLETA MEJORADA
 // =============================================================================
-expansionRatio = smoothRatio;
-dynamicKneeWidth = smoothKneeExp;
 
-// Llamar al expansor simple
-expansionGainReduction = softkneeSecondOrderExpansor(finalEnvelopeDb, smoothThresholdDb, expansionRatio, dynamicKneeWidth);
+// DETECCIÓN DE TRANSIENTES MEJORADA
+envelope_linear = dbtoa(finalEnvelopeDb);
 
-// Cálculo directo sin if/else
-gainReductionDb = expansionGainReduction - finalEnvelopeDb;
-gainReductionDbLimited = max(gainReductionDb, smoothRange);  // RANGE siempre limita igual
-gainReductionLinear = dbtoa(gainReductionDbLimited);
+// Derivada con suavizado previo para reducir ruido
+//envelope_smoothed = (envelopeHistory * 0.9) + (envelope_linear * 0.1);
 
-expandedLeft = leftDelayedForCompression * gainReductionLinear;
+// Suavizado dinámico del envelope basado en EXTRA_SMOOTH
+//envelope_smooth_amount = mix(0.05, 0.95, smoothSmoothAmount);  // 5% a 95% de smoothing
 
-// MODO DELTA - Señal diferencia (experimental)
-delta_control = clamp(smoothDeltaMode, 0, 1);                 // Asegurar rango válido
-delta_signal = leftDelayedForCompression - expandedLeft;      // Diferencia = lo que se quitó
-leftWithDelta = mix(expandedLeft, delta_signal, delta_control); // Mezclar según control
+// envelope_smooth_amount = mix(0.001, 0.01, smoothSmoothAmount);  // la que más me convence
+
+// prueba exponencial (más musical)
+smooth_shaped = pow(smoothSmoothAmount, 2);  // Curva cuadrática
+envelope_smooth_amount = mix(0.05, 0.7, smooth_shaped);
+// de momento me quedo con esta
+
+envelope_smoothed = (envelopeHistory * envelope_smooth_amount) + (envelope_linear * (1 - envelope_smooth_amount));
+envelope_change = envelope_smoothed - envelopeHistory;
+envelopeHistory = envelope_smoothed;
+
+// Rectificar y escalar la derivada con SENSITIVITY - RANGO AMPLIADO
+// 0 = muy selectivo (solo picos fuertes), 1 = muy sensible (detecta todo)
+sensitivity_scale = scale(smoothSensitivity, 0, 1, 1, 500);  // 1x a 20x (más musical)
+positive_change = max(0, envelope_change * sensitivity_scale);
+
+// Ajustar también el umbral según sensitivity para mejor control
+// Con baja sensitivity, umbral más alto (más selectivo)
+threshold_scale = scale(smoothSensitivity, 0, 1, 0.05, 0.001);
+threshold = threshold_scale + (envelope_smoothed * 0.01);
+is_attack = positive_change > threshold ? 1 : 0;
+
+// Suavizado dinámico basado en los parámetros de timing
+detection_attack_coeff = exp(-1 / (max(0.5, smoothAttack * 0.1) * samplerate * 0.001));
+detection_release_coeff = exp(-1 / (max(5, smoothRelease * 0.5) * samplerate * 0.001));
+
+// Declarar attack_env e inicializar
+attack_env = 0;
+
+if(is_attack > 0.5) {
+    attack_env = (transientSmoothHistory * detection_attack_coeff) + (is_attack * (1 - detection_attack_coeff));
+} else {
+    attack_env = (transientSmoothHistory * detection_release_coeff) + (is_attack * (1 - detection_release_coeff));
+}
+
+transientSmoothHistory = attack_env;
+
+// Limitar envolvente de attack para evitar sobre-modulación
+attack_env = min(attack_env, 1);
+
+// ENVOLVENTE DE SUSTAIN MEJORADA - Más independiente
+// Sustain solo activo cuando NO hay transiente
+//sustain_active = 1 - min(attack_env * 2, 1);  // Corte más agresivo
+sustain_active = 1 - pow(min(attack_env * 1.5, 1), 0.7);  // Curva más suave y musical
+sustain_env = sustain_active;
+
+// APLICAR GANANCIAS CON CURVA SUAVE
+// Convertir controles a factores lineales con curva
+attack_factor = pow(dbtoa(smoothAttackGain), 0.7);  // con 0.3 - 0.5 - 0.825 1.0
+sustain_factor = pow(dbtoa(smoothSustainGain), 0.7);
+
+// Calcular ganancia total con mezcla ponderada
+gain_from_attack = mix(1, attack_factor, attack_env);
+gain_from_sustain = mix(1, sustain_factor, sustain_env);
+
+// Combinar ambas ganancias
+gain_total = gain_from_attack * gain_from_sustain;
+gain_total = max(0.1, min(10, gain_total));  // Limitar entre -20dB y +20dB
+
+// Aplicar a la señal
+expandedLeft = leftDelayedForCompression * gain_total;
+
+// MODO DELTA MEJORADO - Con transición suave entre modos
+delta_control = clamp(smoothDeltaMode, 0, 1);
+delta_signal = 0;
+unprocessed = 0;
+
+// Para modo DELTA: usar DELTAMODE con transición suave
+if(delta_control > 0.01) {
+    delta_mode = smoothRange;  // 0-2
+    
+    // Calcular las tres posibles señales delta
+    // 1. Attack only
+    gain_attack_only = mix(1, attack_factor, attack_env);
+    delta_attack_only = (leftDelayedForCompression * gain_attack_only) - leftDelayedForCompression;
+    
+    // 2. Sustain only
+    gain_sustain_only = mix(1, sustain_factor, sustain_env);
+    delta_sustain_only = (leftDelayedForCompression * gain_sustain_only) - leftDelayedForCompression;
+    
+    // 3. Both (completo)
+    delta_both = expandedLeft - leftDelayedForCompression;
+    
+    // Hacer morphing suave entre los modos
+    if(delta_mode <= 1) {
+        // Transición de Attack (0) a Both (1)
+        fade = delta_mode;  // 0 a 1
+        delta_signal = mix(delta_attack_only, delta_both, fade);
+    } else {
+        // Transición de Both (1) a Sustain (2)
+        fade = delta_mode - 1;  // 0 a 1
+        delta_signal = mix(delta_both, delta_sustain_only, fade);
+    }
+}
+
+leftWithDelta = mix(expandedLeft, delta_signal, delta_control);
 
 // AUTO MAKEUP - Compensación automática de ganancia (70% del gain reduction)
-autoMakeupGainReduction = gainReductionDb;                    // Usar gain reduction como referencia
-reduction_smooth_mul = reductionHistLeft * SMOOTH_HISTORY_FACTOR; // Suavizar historia
-reduction_current_mul = autoMakeupGainReduction * SMOOTH_PARAM_FACTOR; // Suavizar actual
-reduction_smoothed = reduction_current_mul + reduction_smooth_mul; // Combinar suavizado
-auto_makeup = reduction_smoothed * AUTO_MAKEUP_FACTOR;        // Aplicar factor -0.7 (70%)
-combined_makeup = auto_makeup + leftMakeupGain;               // Combinar con makeup manual
+autoMakeupGainReduction = 0;  // No hay gain reduction en transient designer
+reduction_smooth_mul = reductionHistLeft * SMOOTH_HISTORY_FACTOR;
+reduction_current_mul = autoMakeupGainReduction * SMOOTH_PARAM_FACTOR;
+reduction_smoothed = reduction_current_mul + reduction_smooth_mul;
+auto_makeup = reduction_smoothed * AUTO_MAKEUP_FACTOR;
+combined_makeup = auto_makeup + leftMakeupGain;
 
 final_makeup_db = leftMakeupGain;
 
-
 // Cuando DELTA está activo, forzar makeup a 0dB
-finalMakeupDbWithDelta = mix(final_makeup_db, 0, smoothDeltaMode); // 0dB cuando DELTA=1
-makeup_linear = dbtoa(finalMakeupDbWithDelta);            // Convertir a factor lineal
-leftWithMakeup = leftWithDelta * makeup_linear;               // Aplicar makeup final
-reductionHistLeft = fixdenorm(reduction_smoothed);            // Actualizar historia
+finalMakeupDbWithDelta = mix(final_makeup_db, 0, smoothDeltaMode);
+makeup_linear = dbtoa(finalMakeupDbWithDelta);
+leftWithMakeup = leftWithDelta * makeup_linear;
+reductionHistLeft = fixdenorm(reduction_smoothed);
 
 // Sin compresión paralela - pasar directamente la señal procesada
 leftParallelMixed = leftWithMakeup;
 
 // MIX DRY/WET - Balance entre señal original y procesada
-leftDryWetMixed = mix(leftDelayedForMixing, leftParallelMixed, effectiveDryWetMix); // Usar effectiveDryWetMix (afectado por DELTA)
-leftWithSidechain = mix(leftDryWetMixed, sidechainDelayedWrite, smoothSoloSidechain); // Solo sidechain
+leftDryWetMixed = mix(leftDelayedForMixing, leftParallelMixed, effectiveDryWetMix);
+leftWithSidechain = mix(leftDryWetMixed, sidechainDelayedWrite, smoothSoloSidechain);
 
 // OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
-maxOutput = 0.989; // Limitar a -0.1 dBFS (0.989 lineal) para dejar headroom
-saturationAmount = clamp(smoothSoftclip, 0, 1);                  // Cantidad de saturación (0=Off, 1=Full)
-// Cuando DELTA está activo, bypasear también el softclipping
-effectiveSaturationAmount = mix(saturationAmount, 0, smoothDeltaMode); // 0 cuando DELTA=1
+maxOutput = 0.989;
+saturationAmount = clamp(smoothSoftclip, 0, 1);
+effectiveSaturationAmount = mix(saturationAmount, 0, smoothDeltaMode);
 
 // Saturación asimétrica para añadir color/calidez
-leftSaturated = 0;  // Declarar variable
+leftSaturated = 0;
 if(leftWithSidechain > 0) {
-    // Semiciclo positivo - más saturación (genera armónicos pares)
-    leftSaturated = tanh(leftWithSidechain * 1.2) * 0.833;   // Compensar ganancia
+    leftSaturated = tanh(leftWithSidechain * 1.2) * 0.833;
 }
 else {
-    // Semiciclo negativo - menos saturación
-    leftSaturated = tanh(leftWithSidechain * 0.8) * 1.25;    // Compensar ganancia
+    leftSaturated = tanh(leftWithSidechain * 0.8) * 1.25;
 }
 leftSaturated = clamp(leftSaturated, -maxOutput, maxOutput);
 
 // Mezclar señal original con saturada según el parámetro
 leftProcessedOutput = mix(leftWithSidechain, leftSaturated, effectiveSaturationAmount);
-leftFinalOutput = mix(leftDelayedForMixing, leftProcessedOutput, smoothBypassAmount); // Bypass final
-out1 = leftFinalOutput;                                       // Salida canal izquierdo
+leftFinalOutput = mix(leftDelayedForMixing, leftProcessedOutput, smoothBypassAmount);
+out1 = leftFinalOutput;
 
 // =============================================================================
 // PROCESAMIENTO DE SALIDA - Canal Derecho
 // =============================================================================
 // Idéntico al canal izquierdo pero con variables propias para claridad.
 
-// EXPANSIÓN BÁSICA - Usar los valores ya calculados del canal izquierdo
-// No necesitamos recalcular expansionGainReduction porque es igual para ambos canales
-rightGainReductionDb = gainReductionDbLimited;  // Usar el valor limitado, no el sin limitar
-rightGainReductionLinear = gainReductionLinear;  // Ya calculado arriba
-expandedRight = rightDelayedForCompression * rightGainReductionLinear; // Aplicar expansión
+// Usar los valores ya calculados del canal izquierdo
+rightGainTotal = gain_total;  // La ganancia es la misma para ambos canales
+expandedRight = rightDelayedForCompression * rightGainTotal;
 
-// MODO DELTA - Señal diferencia (experimental)
-rightDeltaControl = clamp(smoothDeltaMode, 0, 1);                // Asegurar rango válido
-rightDeltaSignal = rightDelayedForCompression - expandedRight;   // Diferencia = lo que se quitó
-rightWithDelta = mix(expandedRight, rightDeltaSignal, rightDeltaControl); // Mezclar según control
+// MODO DELTA MEJORADO - Con transición suave entre modos (Canal Derecho)
+rightDeltaControl = clamp(smoothDeltaMode, 0, 1);
+rightDeltaSignal = 0;
+rightUnprocessed = 0;
 
-// AUTO MAKEUP - Compensación automática de ganancia (70% del gain reduction)
-rightAutoMakeupGainReduction = rightGainReductionDb;              // Usar gain reduction como referencia
-rightReductionSmoothMul = reductionHistRight * SMOOTH_HISTORY_FACTOR; // Suavizar historia
-rightReductionCurrentMul = rightAutoMakeupGainReduction * SMOOTH_PARAM_FACTOR; // Suavizar actual
-rightReductionSmoothed = rightReductionCurrentMul + rightReductionSmoothMul; // Combinar suavizado
-rightAutoMakeup = rightReductionSmoothed * AUTO_MAKEUP_FACTOR;    // Aplicar factor -0.7 (70%)
-rightCombinedMakeup = rightAutoMakeup + rightMakeupGain;          // Combinar con makeup manual
+// Para modo DELTA: usar DELTAMODE con transición suave
+if(rightDeltaControl > 0.01) {
+    right_delta_mode = smoothRange;  // 0-2
+    
+    // Calcular las tres posibles señales delta
+    // 1. Attack only
+    right_gain_attack_only = mix(1, attack_factor, attack_env);
+    right_delta_attack_only = (rightDelayedForCompression * right_gain_attack_only) - rightDelayedForCompression;
+    
+    // 2. Sustain only
+    right_gain_sustain_only = mix(1, sustain_factor, sustain_env);
+    right_delta_sustain_only = (rightDelayedForCompression * right_gain_sustain_only) - rightDelayedForCompression;
+    
+    // 3. Both (completo)
+    right_delta_both = expandedRight - rightDelayedForCompression;
+    
+    // Hacer morphing suave entre los modos
+    if(right_delta_mode <= 1) {
+        // Transición de Attack (0) a Both (1)
+        right_fade = right_delta_mode;  // 0 a 1
+        rightDeltaSignal = mix(right_delta_attack_only, right_delta_both, right_fade);
+    } else {
+        // Transición de Both (1) a Sustain (2)
+        right_fade = right_delta_mode - 1;  // 0 a 1
+        rightDeltaSignal = mix(right_delta_both, right_delta_sustain_only, right_fade);
+    }
+}
+
+rightWithDelta = mix(expandedRight, rightDeltaSignal, rightDeltaControl);
+
+// AUTO MAKEUP - Compensación automática de ganancia
+rightAutoMakeupGainReduction = 0;  // No hay gain reduction en transient designer
+rightReductionSmoothMul = reductionHistRight * SMOOTH_HISTORY_FACTOR;
+rightReductionCurrentMul = rightAutoMakeupGainReduction * SMOOTH_PARAM_FACTOR;
+rightReductionSmoothed = rightReductionCurrentMul + rightReductionSmoothMul;
+rightAutoMakeup = rightReductionSmoothed * AUTO_MAKEUP_FACTOR;
+rightCombinedMakeup = rightAutoMakeup + rightMakeupGain;
 
 rightFinalMakeupDb = rightMakeupGain;
 
 // Cuando DELTA está activo, forzar makeup a 0dB
-rightFinalMakeupDbWithDelta = mix(rightFinalMakeupDb, 0, smoothDeltaMode); // 0dB cuando DELTA=1
-rightMakeupLinear = dbtoa(rightFinalMakeupDbWithDelta);         // Convertir a factor lineal
-rightWithMakeup = rightWithDelta * rightMakeupLinear;             // Aplicar makeup final
-reductionHistRight = fixdenorm(rightReductionSmoothed);           // Actualizar historia
+rightFinalMakeupDbWithDelta = mix(rightFinalMakeupDb, 0, smoothDeltaMode);
+rightMakeupLinear = dbtoa(rightFinalMakeupDbWithDelta);
+rightWithMakeup = rightWithDelta * rightMakeupLinear;
+reductionHistRight = fixdenorm(rightReductionSmoothed);
 
 // Sin compresión paralela - pasar directamente la señal procesada
 rightParallelMixed = rightWithMakeup;
 
 // MIX DRY/WET - Balance entre señal original y procesada
-rightDryWetMixed = mix(rightDelayedForMixing, rightParallelMixed, effectiveDryWetMix); // Usar effectiveDryWetMix
-rightWithSidechain = mix(rightDryWetMixed, sidechainDelayedTap, smoothSoloSidechain); // Solo sidechain
+rightDryWetMixed = mix(rightDelayedForMixing, rightParallelMixed, effectiveDryWetMix);
+rightWithSidechain = mix(rightDryWetMixed, sidechainDelayedTap, smoothSoloSidechain);
 
 // OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
-rightSaturationAmount = clamp(smoothSoftclip, 0, 1);             // Cantidad de saturación (0=Off, 1=Full)
-// Cuando DELTA está activo, bypasear también el softclipping
-rightEffectiveSaturationAmount = mix(rightSaturationAmount, 0, smoothDeltaMode); // 0 cuando DELTA=1
+rightSaturationAmount = clamp(smoothSoftclip, 0, 1);
+rightEffectiveSaturationAmount = mix(rightSaturationAmount, 0, smoothDeltaMode);
 
 // Saturación asimétrica para añadir color/calidez
-rightSaturated = 0;  // Declarar variable
+rightSaturated = 0;
 if(rightWithSidechain > 0) {
-    // Semiciclo positivo - más saturación (genera armónicos pares)
-    rightSaturated = tanh(rightWithSidechain * 1.2) * 0.833;  // Compensar ganancia
+    rightSaturated = tanh(rightWithSidechain * 1.2) * 0.833;
 }
 else {
-    // Semiciclo negativo - menos saturación
-    rightSaturated = tanh(rightWithSidechain * 0.8) * 1.25;   // Compensar ganancia
+    rightSaturated = tanh(rightWithSidechain * 0.8) * 1.25;
 }
 rightSaturated = clamp(rightSaturated, -maxOutput, maxOutput);
 
 // Mezclar señal original con saturada según el parámetro
 rightProcessedOutput = mix(rightWithSidechain, rightSaturated, rightEffectiveSaturationAmount);
-rightFinalOutput = mix(rightDelayedForMixing, rightProcessedOutput, smoothBypassAmount); // Bypass final
-out2 = rightFinalOutput;                                      // Salida canal derecho
+rightFinalOutput = mix(rightDelayedForMixing, rightProcessedOutput, smoothBypassAmount);
+out2 = rightFinalOutput;
 
 // =============================================================================
-// GAIN REDUCTION OUTPUT - Medidor de compresión para UI
+// GAIN REDUCTION OUTPUT - Medidor bipolar -1 a +1 para UI (escala lineal)
 // =============================================================================
-// Genera señal de monitoreo para el medidor de gain reduction en la interfaz.
-// Muestra la reducción real aplicada al audio (con limitación de range).
+// Medidor intuitivo con escala lineal para mejor respuesta visual
 
-realExpansionLinear = dbtoa(gainReductionDbLimited);           // Reducción real CON limitación de range
-gainReductionMeter = mix(unitaryReference, realExpansionLinear, bypassInverted); // 1=activo, 0=bypass
-gainReductionOutput = min(gainReductionMeter, 1);              // Limitar a máximo 1.0
-out3 = gainReductionOutput;                                    // Salida para medidor GR
+// Mapear ganancia lineal al rango -1 a +1
+// gain_total = 0.25 (-12dB) a 4.0 (+12dB), centro = 1.0
+gain_meter_bipolar = 0;
+
+if(gain_total >= 1) {
+    // Amplificación: mapear 1-4 a 0-1
+    gain_meter_bipolar = (gain_total - 1) / 3;
+} else {
+    // Atenuación: mapear 0.25-1 a -1-0
+    gain_meter_bipolar = (gain_total - 1) / 0.75;
+}
+
+gain_meter_bipolar = clamp(gain_meter_bipolar, -1, 1);
+
+gainReductionMeter = mix(0, gain_meter_bipolar, bypassInverted);
+gainReductionOutput = gainReductionMeter;
+out3 = gainReductionOutput;
 
 // =============================================================================
 // ACTUALIZACIÓN DE HISTORIAS PARA EL SIGUIENTE CICLO
@@ -876,7 +971,10 @@ out3 = gainReductionOutput;                                    // Salida para me
 
 // Historias de smoothing de parámetros
 deltaModeHistory = deltaModeHistoryNext;
-thresholdHistory = thresholdHistoryNext;
+attackGainHistory = attackGainHistoryNext;    // NUEVA
+sustainGainHistory = sustainGainHistoryNext;  // NUEVA
+sensitivityHistory = sensitivityHistoryNext;  // NUEVA
+
 makeupGainHistory = makeupGainHistoryNext;
 soloSidechainHistory = soloSidechainHistoryNext;
 bypassAmountHistory = bypassAmountHistoryNext;
@@ -886,9 +984,7 @@ trimHistory = trimHistoryNext;
 sidechainTrimHistory = sidechainTrimHistoryNext;
 
 // Historias adicionales de smoothing
-ratioHistory = ratioHistoryNext;
 rangeHistory = rangeHistoryNext;
-kneeExpHistory = kneeExpHistoryNext;
 reactHistory = reactHistoryNext;
 smoothAmountHistory = smoothAmountHistoryNext;
 lookaheadHistory = lookaheadHistoryNext;
