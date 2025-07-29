@@ -57,9 +57,9 @@ JCBTransientAudioProcessor::JCBTransientAudioProcessor()
         if (auto* param = apvts.getRawParameterValue(paramName)) {
             float value = param->load();
             
-            // Aplicar misma validación que en parameterChanged()
-            if (paramName == "d_ATK" && value < 0.1f) {
-                value = 0.1f;
+            // Aplicar misma validación que en parameterChanged() - d_ATK ahora permite 0
+            if (paramName == "d_ATK" && value < 0.f) {
+                value = 0.f;
             }
             if (paramName == "e_REL" && value < 0.1f) {
                 value = 0.1f;
@@ -690,9 +690,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
                                                                   juce::NormalisableRange<float>(-18.f, 18.f, 0.1f, 1.f),
                                                                   0.f);
 
-   // d_ATK @min 0.1 @max 250 @default 1
+   // d_ATK @min 0 @max 250 @default 1
    auto atkRange = juce::NormalisableRange<float>(
-       0.1f, 250.f,
+       0.f, 250.f,
        [](float start, float end, float normalised) {
            return start + (end - start) * std::pow(normalised, 1.8f);
        },
@@ -724,9 +724,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        },
        nullptr);
 
-   // e_REL @min 1 @max 500 @default 10
+   // e_REL @min 0.1 @max 350 @default 60
    auto relRange = juce::NormalisableRange<float>(
-       1.f, 500.f,
+       0.1f, 350.f,
        [](float start, float end, float normalised) {
            return start + (end - start) * std::pow(normalised, 1.4f);
        },
@@ -745,7 +745,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("e_REL", versionHint),
        juce::CharPointer_UTF8("Release"),
        relRange,
-       10.0f,
+       60.0f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int){
@@ -954,8 +954,8 @@ void JCBTransientAudioProcessor::parameterChanged(const juce::String& parameterI
 {
     
     // Validar valores mínimos para ATK y REL
-    if (parameterID == "d_ATK" && newValue < 0.1f) {
-        newValue = 0.1f;
+    if (parameterID == "d_ATK" && newValue < 0.f) {
+        newValue = 0.f;
     }
     if (parameterID == "e_REL" && newValue < 0.1f) {
         newValue = 0.1f;

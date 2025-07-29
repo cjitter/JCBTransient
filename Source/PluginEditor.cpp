@@ -1802,8 +1802,8 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                     float value = param->load();
                     
                     // Aplicar la misma validación que en parameterChanged()
-                    if (paramName == "d_ATK" && value < 0.1f) {
-                        value = 0.1f;
+                    if (paramName == "d_ATK" && value < 0.f) {
+                        value = 0.f;
                     }
                     if (paramName == "e_REL" && value < 0.1f) {
                         value = 0.1f;
