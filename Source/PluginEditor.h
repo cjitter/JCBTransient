@@ -173,7 +173,6 @@ private:
     
     // Medidores con posicionamiento exacto desde JCBExpansorGate
     GradientMeter inputMeterL, inputMeterR;
-    GradientMeterInv grMeter;  // Mantener GradientMeterInv - muestra reducción desde arriba que es correcto para compresor
     GradientMeterOutput outputMeterL, outputMeterR;
     
     // Medidores sidechain (solo visibles cuando SC está activo)
@@ -898,7 +897,6 @@ private:
     bool isBypassed = false;
     bool bypassTextVisible = false;
     // Estado de interfaz
-    float maxGainReductionFromBuffer = 0.0f;
     int clipResetCounter = 0;
     GuiSizeState currentSizeState = GuiSizeState::Current;
     juce::Point<int> lastCustomSize;

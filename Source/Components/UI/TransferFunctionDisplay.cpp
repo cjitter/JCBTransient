@@ -25,6 +25,8 @@ TransferFunctionDisplay::TransferFunctionDisplay()
     inputWaveformBuffer.resize(waveformBufferSize, -100.0f);       // Buffer entrada (-100dB = silencio)
     processedWaveformBuffer.resize(waveformBufferSize, -100.0f);   // Buffer salida procesada
     gainReductionBuffer.resize(waveformBufferSize, 0.0f);          // Buffer GR (0dB = sin reducción)
+    attackGainBuffer.resize(waveformBufferSize, 0.0f);            // Buffer Attack gain (bipolar 0 = center)
+    sustainGainBuffer.resize(waveformBufferSize, 0.0f);           // Buffer Sustain gain (bipolar 0 = center)
     
     // ELIMINADO: Inicialización de buffer DELTA - ya no se utiliza
     
@@ -59,6 +61,9 @@ void TransferFunctionDisplay::paint(juce::Graphics& g)
         if (envelopeVisible) {
             // Mostrar waveforms (formas de onda de entrada y salida)
             drawWaveformAreas(g, graphBounds);
+            
+            // Mostrar histogramas Attack/Sustain superpuestos
+            drawAttackSustainHistograms(g, graphBounds);
         }
     }
     
@@ -744,134 +749,81 @@ void TransferFunctionDisplay::updateWaveformData(const float* inputSamples, cons
         hasWaveformData.store(true);
     }
     
-    // Procesar TODO el bloque de una vez para obtener un solo valor de envolvente
-    float maxInput = 0.0f;
-    float maxProcessed = 0.0f;
+    // NUEVO: Solo capturar salida procesada en modo bipolar (sin abs())
+    // NOTA: Según comentarios, inputSamples[i] es realmente la salida procesada
+    float processedSample = inputSamples[0];  // Usar primera muestra como representativa
     
-    // Obtener el máximo del bloque completo
-    // NOTA: Intercambiamos input y processed porque vienen invertidos del processor
-    for (int i = 0; i < numSamples; ++i)
+    // Para múltiples muestras, usar la de mayor magnitud (pero mantener signo)
+    for (int i = 1; i < numSamples; ++i)
     {
-        maxInput = juce::jmax(maxInput, std::abs(processedSamples[i]));  // processed es realmente la entrada post-TRIM
-        maxProcessed = juce::jmax(maxProcessed, std::abs(inputSamples[i]));  // input es realmente la salida procesada
+        if (std::abs(inputSamples[i]) > std::abs(processedSample)) {
+            processedSample = inputSamples[i];
+        }
     }
     
     // Si estamos en silencio, aplicar fade progresivo
     if (isSilent.load(std::memory_order_relaxed))
     {
         float currentFade = fadeOutFactor.load(std::memory_order_relaxed);
-        maxInput *= currentFade;
-        maxProcessed *= currentFade;
+        processedSample *= currentFade;
     }
     
-    // Detectar cambios rápidos en la señal
+    // Detectar cambios rápidos en la señal usando magnitud
     float prevLevel = previousInputLevel.load(std::memory_order_relaxed);
-    float inputChange = std::abs(maxInput - prevLevel);
+    float currentMagnitude = std::abs(processedSample);
+    float inputChange = std::abs(currentMagnitude - prevLevel);
     float currentDetector = changeDetector.load(std::memory_order_relaxed);
     changeDetector.store(currentDetector * 0.9f + inputChange * 0.1f, std::memory_order_relaxed);
-    previousInputLevel.store(maxInput, std::memory_order_relaxed);
+    previousInputLevel.store(currentMagnitude, std::memory_order_relaxed);
     
     // Cambiar a modo rápido si detectamos transientes
     useFastMode.store(currentDetector > 0.1f, std::memory_order_relaxed);
     
-    // Parámetros para envelope más "encrespado" y abrupto
-    float releaseTime = 0.3f;   // Release MUY rápido para máxima textura
+    // NUEVO: Almacenar valor bipolar directamente (sin conversión a dB)
+    // Clampear al rango [-1.0, 1.0] para evitar desbordamientos visuales
+    float clampedProcessedSample = juce::jlimit(-1.0f, 1.0f, processedSample);
     
-    // Filtro de envolvente mínimo para mantener el carácter "encrespado"
+    // Solo almacenar la señal de salida procesada (entrada no se necesita más)
+    processedWaveformBuffer[writeIndex] = clampedProcessedSample;
+    
+    // Limpiar entrada para evitar confusion visual (opcional)
+    inputWaveformBuffer[writeIndex] = 0.0f;
+        
+    // Avanzar índice de escritura para próxima muestra
+    waveformWriteIndex.store((writeIndex + 1) % waveformBufferSize);
+    
+    hasWaveformData.store(true);
+}
+
+// NUEVO: Método unificado para sincronizar forma de onda con histogramas Attack/Sustain
+void TransferFunctionDisplay::updateWaveformData(const float* inputSamples, const float* processedSamples, const float* attackSamples, const float* sustainSamples, int numSamples)
+{
+    if (numSamples <= 0) return;
+    
+    int writeIndex = waveformWriteIndex.load();
+    
+    // Procesar todas las muestras con el mismo timestamp
+    for (int i = 0; i < numSamples; ++i)
     {
-        // Para entrada - seguimiento directo sin ruido artificial
-        float clampedInput = juce::jmin(maxInput, 0.99f); // Evitar que supere 0 dBFS
-        float currentInputEnv = inputEnvelopeState.load(std::memory_order_relaxed);
+        // WAVEFORM DATA - Conversión bipolar directa sin dB para sincronización
+        float clampedProcessed = juce::jlimit(-1.0f, 1.0f, processedSamples[i]);
+        processedWaveformBuffer[writeIndex] = clampedProcessed;
+        inputWaveformBuffer[writeIndex] = 0.0f; // Input deshabilitado como antes
         
-        if (clampedInput > currentInputEnv * 1.1f)  // Umbral más bajo para más respuesta
-        {
-            // Attack instantáneo
-            inputEnvelopeState.store(clampedInput, std::memory_order_relaxed);
-        }
-        else
-        {
-            // Release muy abrupto para mantener detalles
-            float newValue = currentInputEnv * releaseTime + clampedInput * (1.0f - releaseTime);
+        // ATTACK/SUSTAIN DATA - Misma conversión y timestamp
+        if (attackSamples && sustainSamples) {
+            float clampedAttack = juce::jlimit(-1.0f, 1.0f, attackSamples[i]);
+            float clampedSustain = juce::jlimit(-1.0f, 1.0f, sustainSamples[i]);
             
-            // Corte abrupto en silencio
-            if (newValue < 0.001f) newValue = 0.0f;
-            inputEnvelopeState.store(newValue, std::memory_order_relaxed);
+            attackGainBuffer[writeIndex] = clampedAttack;
+            sustainGainBuffer[writeIndex] = clampedSustain;
         }
         
-        // Para salida procesada - igual de directo sin ruido
-        float currentProcessedEnv = processedEnvelopeState.load(std::memory_order_relaxed);
-        
-        if (maxProcessed > currentProcessedEnv * 1.1f)
-        {
-            // Attack instantáneo
-            processedEnvelopeState.store(maxProcessed, std::memory_order_relaxed);
-        }
-        else
-        {
-            // Mezclar con la señal actual para más detalle
-            float newValue = currentProcessedEnv * releaseTime + maxProcessed * (1.0f - releaseTime);
-            
-            // Corte abrupto
-            if (newValue < 0.001f) newValue = 0.0f;
-            processedEnvelopeState.store(newValue, std::memory_order_relaxed);
-        }
-        
-        // Re-leer los valores finales para convertir a dB
-        float finalInputEnv = inputEnvelopeState.load(std::memory_order_relaxed);
-        float finalProcessedEnv = processedEnvelopeState.load(std::memory_order_relaxed);
-        
-        // Convertir a dB sin ruido artificial
-        float inputDb = finalInputEnv > 0.0001f ?
-            20.0f * std::log10(finalInputEnv) : -100.0f;
-        float processedDb = finalProcessedEnv > 0.0001f ?
-            20.0f * std::log10(finalProcessedEnv) : -100.0f;
-        
-        // Limitar al rango del gráfico (-100 dB a 0 dB)
-        // Permitir llegar hasta 0 dB para consistencia con el rango visual
-        inputDb = juce::jlimit(-100.0f, 0.0f, inputDb);
-        processedDb = juce::jlimit(-100.0f, 0.0f, processedDb);
-        
-        inputWaveformBuffer[writeIndex] = inputDb;
-        processedWaveformBuffer[writeIndex] = processedDb;
-        
-        // Calcular y almacenar la reducción de ganancia (positivo = reducción)
-        float gainReduction = inputDb - processedDb;
-        
-        // Condición especial para ratio 1:1 - no debe haber gain reduction
-        if (ratio <= 1.01f) // Pequeño margen para errores de punto flotante
-        {
-            gainReduction = 0.0f;
-            // Forzar que las envolventes sean idénticas cuando ratio es 1:1
-            processedDb = inputDb;
-            processedWaveformBuffer[writeIndex] = inputDb;
-        }
-        
-        // Verificar si la señal está por debajo del threshold (considerando knee)
-        // Si la señal está por debajo de (threshold - knee), no debería haber compresión
-        if (inputDb < (threshold - knee))
-        {
-            gainReduction = 0.0f;
-            // Forzar que las envolventes sean idénticas cuando no hay compresión
-            processedDb = inputDb;
-            processedWaveformBuffer[writeIndex] = inputDb;
-        }
-        
-        // Verificar si EXT KEY está activo pero no hay señal en sidechain
-        // En este caso, no debería haber compresión visible
-        if (extKeyActive && sidechainLevel < -60.0f)
-        {
-            gainReduction = 0.0f;
-            processedDb = inputDb;
-            processedWaveformBuffer[writeIndex] = inputDb;
-        }
-        
-        
-        gainReductionBuffer[writeIndex] = gainReduction;  // Allow negative values for expander
+        // Avanzar al siguiente índice
+        writeIndex = (writeIndex + 1) % waveformBufferSize;
     }
     
-    // Solo escribir UN valor por llamada (no múltiples)
-    writeIndex = (writeIndex + 1) % waveformBufferSize;
-    
+    // Actualizar índice de escritura una sola vez al final
     waveformWriteIndex.store(writeIndex);
     hasWaveformData.store(true);
 }
@@ -1037,8 +989,8 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
     juce::Path inputAreaPath;
     juce::Path processedAreaPath;   // Salida procesada
     
-    // Línea base (parte inferior del gráfico) - con pequeño offset para evitar artefactos
-    const float baseLine = bounds.getBottom() - 1.0f;
+    // NUEVO: Línea base en el centro para señal bipolar
+    const float baseLine = bounds.getCentreY();
     
     // Colectar todos los puntos primero para suavizado
     std::vector<juce::Point<float>> inputPoints;
@@ -1051,56 +1003,22 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         int samplesBack = displayPoints - i + 5;  // Offset mínimo para sincronía audio-visual
         int bufferIndex = (readIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
         
-        float inputDb = inputWaveformBuffer[bufferIndex];
-        float processedDb = processedWaveformBuffer[bufferIndex];
-        
-        // Si los valores son muy bajos (silencio), clampear al mínimo del rango visible
-        if (inputDb < minDb) inputDb = minDb;
-        if (processedDb < minDb) processedDb = minDb;
+        // NUEVO: Leer valores bipolares directos (no dB)
+        float inputSample = inputWaveformBuffer[bufferIndex];      // Entrada (será 0 ahora)
+        float processedSample = processedWaveformBuffer[bufferIndex]; // Salida procesada bipolar [-1, 1]
         
         // Calcular posición X - usar todo el ancho disponible
         float normalizedTime = float(i) / float(displayPoints - 1);
         float x = bounds.getX() + normalizedTime * bounds.getWidth();
         
-        // Calcular posiciones Y usando el rango de zoom actual
-        // Añadir un pequeño offset para evitar que las envolventes toquen exactamente el borde superior
-        float topOffset = 5.0f; // 5 píxeles de margen desde el borde superior (bajado desde 2.0f)
-        float inputY = juce::jmap(inputDb, minDb, maxDb, bounds.getBottom(), bounds.getY() + topOffset);
-        float processedY = juce::jmap(processedDb, minDb, maxDb, bounds.getBottom(), bounds.getY() + topOffset);
+        // NUEVO: Mapeo bipolar - 0 en el centro, [-1,1] → [bottom, top]
+        float topOffset = 5.0f; // Margen desde bordes
+        float inputY = juce::jmap(inputSample, -1.0f, 1.0f, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
+        float processedY = juce::jmap(processedSample, -1.0f, 1.0f, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
         
-        // Amplificar visualmente la diferencia para EXPANDER
-        float expansion = inputDb - processedDb; // Para expansor: positivo cuando hay atenuación (expansión)
-        // Solo aplicar amplificación visual si el ratio es menor que 1:1 (expansión)
-        if (expansion > 0.05f && ratio < 0.99f) {
-            // Factor de amplificación variable según la cantidad de expansión
-            // Más amplificación para expansiones pequeñas (para hacerlas más visibles)
-            float visualAmplification;
-            if (expansion < 3.0f) {
-                // Para expansiones pequeñas (0-3dB), amplificación aumentada
-                visualAmplification = 3.0f;
-            } else if (expansion < 6.0f) {
-                // Para expansiones medias (3-6dB), amplificación moderada
-                visualAmplification = 2.5f;
-            } else {
-                // Para expansiones grandes (>6dB), menos amplificación
-                visualAmplification = 2.0f;
-            }
-            
-            float midPoint = (inputY + processedY) * 0.5f;
-            float separation = (inputY - processedY) * visualAmplification;
-            
-            // Para expansor: processed debe estar más abajo (más atenuado) que input
-            // Mantener los valores dentro de los límites
-            inputY = juce::jlimit(bounds.getY(), bounds.getBottom(),
-                                 midPoint - separation * 0.5f);
-            processedY = juce::jlimit(bounds.getY(), bounds.getBottom(),
-                                     midPoint + separation * 0.5f);
-        }
-        
-        // Sin fade en los extremos - usar todo el ancho disponible
-        // Limitar con pequeño margen para evitar artefactos en los bordes
-        inputY = juce::jlimit(bounds.getY() + 3.0f, bounds.getBottom() - 1.0f, inputY);
-        processedY = juce::jlimit(bounds.getY() + 3.0f, bounds.getBottom() - 1.0f, processedY);
+        // Limitar valores a los bounds para evitar artefactos
+        inputY = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, inputY);
+        processedY = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, processedY);
         
         inputPoints.push_back({x, inputY});
         processedPoints.push_back({x, processedY});
@@ -1122,76 +1040,37 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         processedAreaPath.closeSubPath();
     }
     
-    // Crear path suavizado para entrada
-    if (!inputPoints.empty())
-    {
-        inputAreaPath.startNewSubPath(inputPoints[0].x, baseLine);
-        inputAreaPath.lineTo(inputPoints[0]);
-        
-        // Interpolación lineal simple para evitar artefactos
-        for (size_t i = 1; i < inputPoints.size(); ++i)
-        {
-            inputAreaPath.lineTo(inputPoints[i]);
-        }
-        
-        inputAreaPath.lineTo(inputPoints.back().x, baseLine);
-        inputAreaPath.closeSubPath();
-    }
+    // ELIMINADO: Ya no crear path de entrada
     
     // Dibujar sin máscara para usar todo el ancho
     
-    // 1. PRIMERO dibujar área de ENTRADA (DETRÁS) - Morado translúcido  
-    // CORRECCIÓN: inputAreaPath es realmente para entrada, processedAreaPath para salida
-    if (!inputAreaPath.isEmpty())
-    {
-        // Gradiente vertical para ENTRADA - MORADO GRISÁCEO MÁS SUTIL
-        juce::ColourGradient inputGradient(
-            juce::Colour(0x80, 0x70, 0x85).withAlpha(0.6f * currentFadeOutFactor), bounds.getCentreX(), bounds.getY(),
-            juce::Colour(0x65, 0x58, 0x6A).withAlpha(0.4f * currentFadeOutFactor), bounds.getCentreX(), bounds.getBottom(),
-            false
-        );
-        g.setGradientFill(inputGradient);
-        g.fillPath(inputAreaPath);
-        
-        // Línea superior morada grisácea para ENTRADA - más sutil
-        g.setColour(juce::Colour(0x80, 0x70, 0x85).withAlpha(0.8f * currentFadeOutFactor));
-        juce::Path inputLine;
-        if (!inputPoints.empty())
-        {
-            inputLine.startNewSubPath(inputPoints[0]);
-            for (size_t i = 1; i < inputPoints.size(); ++i)
-            {
-                inputLine.lineTo(inputPoints[i]);
-            }
-            g.strokePath(inputLine, juce::PathStrokeType(1.5f));  // Línea más gruesa para entrada
-        }
-    }
+    // ELIMINADO: Ya no dibujar entrada, solo salida procesada bipolar
     
     // 2. DESPUÉS dibujar área de SALIDA PROCESADA (ENCIMA) - Usando gradiente del medidor de salida
     // CORRECCIÓN: processedAreaPath es realmente para salida procesada  
     if (!processedAreaPath.isEmpty())
     {
-        // Usar el mismo gradiente que los medidores de salida
-        const juce::Colour outputBlue = juce::Colour(0xFF6495ED);     // Azul de OUTPUT
-        const juce::Colour darkPurple = juce::Colour(0xFF202245);     // Morado oscuro personalizado
-        const juce::Colour deepBlue = juce::Colour(0xFF0D3B52);       // Azul profundo intermedio
+        // COLORES NEUTROS: Gradiente gris-blanco para mejor visibilidad
+        const juce::Colour lightGrey = DarkTheme::textPrimary;        // Blanco
+        const juce::Colour mediumGrey = DarkTheme::textSecondary;     // Gris claro
+        const juce::Colour darkGrey = DarkTheme::textMuted;           // Gris oscuro
         
-        // Crear gradiente con transparencia para la envolvente
+        // Crear gradiente neutro con mayor opacidad para visibilidad
         auto outputGradient = juce::ColourGradient(
-            outputBlue.withAlpha(0.6f * currentFadeOutFactor), bounds.getCentreX(), bounds.getY(),
-            darkPurple.withAlpha(0.4f * currentFadeOutFactor), bounds.getCentreX(), bounds.getBottom(),
+            lightGrey.withAlpha(0.8f * currentFadeOutFactor), bounds.getCentreX(), bounds.getY(),
+            darkGrey.withAlpha(0.6f * currentFadeOutFactor), bounds.getCentreX(), bounds.getBottom(),
             false
         );
-        outputGradient.addColour(0.15, outputBlue.withAlpha(0.58f * currentFadeOutFactor));  // Azul claro se mantiene más arriba
-        outputGradient.addColour(0.4, outputBlue.interpolatedWith(deepBlue, 0.3f).withAlpha(0.55f * currentFadeOutFactor));  // Transición más suave
-        outputGradient.addColour(0.65, deepBlue.withAlpha(0.5f * currentFadeOutFactor));
-        outputGradient.addColour(0.85, deepBlue.interpolatedWith(darkPurple, 0.5f).withAlpha(0.45f * currentFadeOutFactor));
+        outputGradient.addColour(0.15, lightGrey.withAlpha(0.75f * currentFadeOutFactor));
+        outputGradient.addColour(0.4, mediumGrey.withAlpha(0.7f * currentFadeOutFactor));
+        outputGradient.addColour(0.65, mediumGrey.withAlpha(0.65f * currentFadeOutFactor));
+        outputGradient.addColour(0.85, darkGrey.withAlpha(0.6f * currentFadeOutFactor));
         
         g.setGradientFill(outputGradient);
         g.fillPath(processedAreaPath);
         
-        // Línea superior con el color azul OUTPUT para SALIDA PROCESADA
-        g.setColour(outputBlue.withAlpha(0.95f * currentFadeOutFactor));
+        // Línea superior con color gris-blanco para SALIDA PROCESADA
+        g.setColour(lightGrey.withAlpha(0.95f * currentFadeOutFactor));
         juce::Path processedLine;
         if (!processedPoints.empty())
         {
@@ -1537,3 +1416,88 @@ void TransferFunctionDisplay::drawGainReductionHistory(juce::Graphics& g, juce::
 // ELIMINADO: drawDeltaGainReduction - ya no se utiliza el modo DELTA
 
 // ELIMINADO: Métodos de histograma DELTA específico - ya no se utilizan
+
+//==============================================================================
+// NUEVOS MÉTODOS PARA ATTACK/SUSTAIN HISTOGRAMS
+//==============================================================================
+
+
+void TransferFunctionDisplay::drawAttackSustainHistograms(juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    if (!hasWaveformData.load() || isSilent.load()) return;
+    
+    const float currentFadeOutFactor = fadeOutFactor.load();
+    if (currentFadeOutFactor <= 0.0f) return;
+    
+    // Configuración de dibujo
+    const float topOffset = 20.0f;
+    const float baseLine = bounds.getCentreY(); // Línea base en el centro para bipolar
+    const float halfHeight = (bounds.getHeight() - 2 * topOffset) * 0.5f;
+    
+    const int currentIndex = waveformWriteIndex.load();
+    const float widthStep = bounds.getWidth() / static_cast<float>(displayPoints);
+    
+    // HISTOGRAMA ATTACK (Naranja - accentWarm)
+    {
+        juce::Path attackHistogram;
+        bool firstPoint = true;
+        
+        for (int i = 0; i < displayPoints; ++i) {
+            // SINCRONIZADO: Usar misma fórmula que drawWaveformAreas
+            int samplesBack = displayPoints - i + 5;  // Offset mínimo para sincronía audio-visual
+            int readIndex = (currentIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
+            const float attackSample = attackGainBuffer[readIndex];
+            
+            // Mapeo bipolar: -1.0 a +1.0 → bottom a top
+            const float yPos = juce::jmap(attackSample, -1.0f, 1.0f, 
+                                        bounds.getBottom() - topOffset, 
+                                        bounds.getY() + topOffset);
+            const float xPos = bounds.getX() + i * widthStep;
+            
+            if (firstPoint) {
+                attackHistogram.startNewSubPath(xPos, yPos);
+                firstPoint = false;
+            } else {
+                attackHistogram.lineTo(xPos, yPos);
+            }
+        }
+        
+        // Dibujar histograma Attack con transparencia
+        g.setColour(DarkTheme::accentWarm.withAlpha(0.6f * currentFadeOutFactor));
+        g.strokePath(attackHistogram, juce::PathStrokeType(1.5f));
+    }
+    
+    // HISTOGRAMA SUSTAIN (Azul - accent)
+    {
+        juce::Path sustainHistogram;
+        bool firstPoint = true;
+        
+        for (int i = 0; i < displayPoints; ++i) {
+            // SINCRONIZADO: Usar misma fórmula que drawWaveformAreas
+            int samplesBack = displayPoints - i + 5;  // Offset mínimo para sincronía audio-visual
+            int readIndex = (currentIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
+            const float sustainSample = sustainGainBuffer[readIndex];
+            
+            // Mapeo bipolar: -1.0 a +1.0 → bottom a top
+            const float yPos = juce::jmap(sustainSample, -1.0f, 1.0f, 
+                                        bounds.getBottom() - topOffset, 
+                                        bounds.getY() + topOffset);
+            const float xPos = bounds.getX() + i * widthStep;
+            
+            if (firstPoint) {
+                sustainHistogram.startNewSubPath(xPos, yPos);
+                firstPoint = false;
+            } else {
+                sustainHistogram.lineTo(xPos, yPos);
+            }
+        }
+        
+        // Dibujar histograma Sustain con transparencia
+        g.setColour(DarkTheme::accent.withAlpha(0.6f * currentFadeOutFactor));
+        g.strokePath(sustainHistogram, juce::PathStrokeType(1.5f));
+    }
+    
+    // Dibujar línea central de referencia (0 = sin ganancia ni atenuación)
+    g.setColour(DarkTheme::textSecondary.withAlpha(0.3f * currentFadeOutFactor));
+    g.drawHorizontalLine(static_cast<int>(baseLine), bounds.getX(), bounds.getRight());
+}

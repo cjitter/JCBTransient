@@ -78,6 +78,7 @@ public:
     //==========================================================================
     
     void updateWaveformData(const float* inputSamples, const float* processedSamples, int numSamples);
+    void updateWaveformData(const float* inputSamples, const float* processedSamples, const float* attackSamples, const float* sustainSamples, int numSamples);
     void updateWaveformDataWithGR(const float* inputSamples, const float* processedSamples, const float* gainReductionSamples, int numSamples);
     
     // Método para establecer valor actual de gain reduction en tiempo real
@@ -157,6 +158,8 @@ private:
     std::vector<float> inputWaveformBuffer;           // Buffer de entrada para histograma
     std::vector<float> processedWaveformBuffer;       // Buffer de salida procesada
     std::vector<float> gainReductionBuffer;           // Historial de reducción de ganancia
+    std::vector<float> attackGainBuffer;              // Buffer para Attack gain histogram
+    std::vector<float> sustainGainBuffer;             // Buffer para Sustain gain histogram
     std::atomic<int> waveformWriteIndex{0};         // Índice de escritura thread-safe
     std::atomic<bool> hasWaveformData{false};       // Flag de datos disponibles
     
@@ -225,6 +228,7 @@ private:
     void drawKneeArea(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawWaveformAreas(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawGainReductionHistory(juce::Graphics& g, juce::Rectangle<float> bounds);
+    void drawAttackSustainHistograms(juce::Graphics& g, juce::Rectangle<float> bounds);
     // ELIMINADO: Métodos específicos de DELTA - ya no se utilizan
 
     //==========================================================================

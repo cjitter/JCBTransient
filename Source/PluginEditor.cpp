@@ -33,7 +33,6 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
       undoManager (um),
       inputMeterL([&p](){ return p.getRmsInputValue(0); }),
       inputMeterR([&p](){ return p.getRmsInputValue(1); }),
-      grMeter([&p](){ return p.getGainReductionValue(0); }),
       outputMeterL([&p](){ return p.getRmsOutputValue(0); }),
       outputMeterR([&p](){ return p.getRmsOutputValue(1); }),
       scMeterL([&p](){ return p.getSCValue(0); }), // SC meter L
@@ -190,8 +189,6 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     transferDisplay.setEnvelopeVisible(initialEnvelopeState);
     utilityButtons.runGraphicsButton.setToggleState(graphicsButtonState, juce::dontSendNotification);
     utilityButtons.runGraphicsButton.setButtonText("graphics");
-    // Configurar visibilidad inicial del grMeter (visible cuando envolventes están visibles)
-    grMeter.setVisible(initialEnvelopeState);
     
     // Actualizar valores de sliders desde APVTS para evitar problemas al cargar sesión
     // Usar MessageManager::callAsync para ejecución thread-safe sin delay
@@ -334,7 +331,6 @@ void JCBTransientAudioProcessorEditor::resized()
     scTrimSlider.setBounds(getScaledBounds(24, 40, 22, 130));  // Altura expandida para TextBox integrado
     
     // Medidor GR (centro-derecha) - más delgado y alto, posición final ajustada
-    grMeter.setBounds(getScaledBounds(436, 48, 5, 105));
     
     // Medidores de salida (lado derecho)
     outputMeterL.setBounds(getScaledBounds(677, 42, 12, 117));
@@ -540,60 +536,40 @@ void JCBTransientAudioProcessorEditor::timerCallback()
         // Obtener datos de waveform si las envolventes están visibles
         if (transferDisplay.isEnvelopeVisible())
         {
-            std::vector<float> inputSamples, processedSamples, gainReductionSamples;
-            processor.getWaveformDataWithGR(inputSamples, processedSamples, gainReductionSamples);
+            std::vector<float> inputSamples, processedSamples;
+            processor.getWaveformData(inputSamples, processedSamples);
             
-            if (!gainReductionSamples.empty())
+            if (!inputSamples.empty() && !processedSamples.empty())
             {
-                // Encontrar la mayor reducción de ganancia en el buffer para el medidor GR
-                // Los valores vienen en dB: negativos = reducción, positivos = amplificación
-                float maxReduction = 0.0f;  // Start with no reduction
-                for (float grDb : gainReductionSamples) {
-                    // For expander, find most negative value (greatest reduction)
-                    if (grDb < maxReduction) {
-                        maxReduction = grDb;
-                    }
-                }
-                maxGainReductionFromBuffer = maxReduction;
+                // Actualizar estado EXT KEY y nivel de sidechain
+                bool keyEnabled = sidechainControls.keyButton.getToggleState();
+                transferDisplay.setExtKeyActive(keyEnabled);
                 
-                // Actualizar transfer display solo con datos de waveform (sin gain reduction)
-                if (!inputSamples.empty() && !processedSamples.empty())
-                {
-                    // Actualizar estado EXT KEY y nivel de sidechain
-                    bool keyEnabled = sidechainControls.keyButton.getToggleState();
-                    transferDisplay.setExtKeyActive(keyEnabled);
-                    
-                    // Obtener nivel promedio de sidechain desde los medidores
-                    float scLevel = (processor.getSCValue(0) + processor.getSCValue(1)) * 0.5f;
-                    transferDisplay.setSidechainLevel(scLevel);
-                    
-                    // Enviar solo waveforms (el parámetro GR se ignora ahora)
-                    transferDisplay.updateWaveformDataWithGR(&inputSamples[0], &processedSamples[0], &gainReductionSamples[0], 1);
-                    
-                    // NUEVO: Enviar valor actual de gain reduction para visualización en DELTA
-                    float currentGR = processor.getGainReductionValue(0);
-                    transferDisplay.setCurrentGainReduction(currentGR);
-                    
-                    // ELIMINADO: Ya no necesitamos parámetro RANGE - usar rango fijo como grMeter
-                    
-                    // Forzar repintado para mostrar envolvente actualizada
-                    transferDisplay.repaint();
+                // Obtener nivel promedio de sidechain desde los medidores
+                float scLevel = (processor.getSCValue(0) + processor.getSCValue(1)) * 0.5f;
+                transferDisplay.setSidechainLevel(scLevel);
+                
+                // Obtener datos de Attack/Sustain gains
+                std::vector<float> attackSamples, sustainSamples;
+                processor.getAttackSustainData(attackSamples, sustainSamples);
+                
+                // LLAMADA UNIFICADA: Enviar todos los datos sincronizados
+                if (!attackSamples.empty() && !sustainSamples.empty()) {
+                    transferDisplay.updateWaveformData(&inputSamples[0], &processedSamples[0], &attackSamples[0], &sustainSamples[0], 1);
+                } else {
+                    // Fallback si no hay datos Attack/Sustain
+                    transferDisplay.updateWaveformData(&inputSamples[0], &processedSamples[0], 1);
                 }
+                
+                // Forzar repintado para mostrar envolvente actualizada
+                transferDisplay.repaint();
             }
-        }
-        else
-        {
-            // Solo obtener el valor máximo de gain reduction para el medidor
-            maxGainReductionFromBuffer = processor.getMaxGainReduction();
         }
     }
     else
     {
-        // Si está en bypass o Logic está parado, no hay reducción
-        maxGainReductionFromBuffer = 0.0f;
-        
         // Forzar repaint del transfer display cuando Logic está parado
-        // para que las envolventes y el histograma desaparezcan
+        // para que las envolventes desaparezcan
         if (isProcessingInactive)
         {
             transferDisplay.repaint();
@@ -674,9 +650,7 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
         // Invertir la lógica: cuando graphics está ON, ocultar visualizaciones
         transferDisplay.setEnvelopeVisible(!newState);
         processor.setEnvelopeVisualEnabled(!newState);
-        // Cuando graphics está activo, ocultar grMeter (también considerar SOLO SC)
-        bool soloScActive = sidechainControls.soloScButton.getToggleState();
-        grMeter.setVisible(!newState && !soloScActive);
+        // Cuando graphics está activo, ya no hay grMeter que ocultar
         // Mantener el texto siempre como "graphics"
     }
     // Botones de gestión de presets
@@ -858,7 +832,7 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
                 newZoom = TransferFunctionDisplay::ZoomLevel::Zoomed;
                 utilityButtons.zoomButton.setButtonText("zoom x2");
                 utilityButtons.zoomButton.setToggleState(true, juce::dontSendNotification);
-                grMeter.setZoomLevel(true);  // Sincronizar medidor GR con zoom x2 (-48dB a 0dB)
+                // Ya no hay grMeter para sincronizar
                 break;
                 
             case TransferFunctionDisplay::ZoomLevel::Zoomed:
@@ -866,7 +840,7 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
                 newZoom = TransferFunctionDisplay::ZoomLevel::Normal;
                 utilityButtons.zoomButton.setButtonText("zoom");
                 utilityButtons.zoomButton.setToggleState(false, juce::dontSendNotification);
-                grMeter.setZoomLevel(false);
+                // Ya no hay grMeter para sincronizar
                 break;
                 
             default:
@@ -874,7 +848,7 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
                 newZoom = TransferFunctionDisplay::ZoomLevel::Normal;
                 utilityButtons.zoomButton.setButtonText("zoom");
                 utilityButtons.zoomButton.setToggleState(false, juce::dontSendNotification);
-                grMeter.setZoomLevel(false);
+                // Ya no hay grMeter para sincronizar
                 break;
         }
         
@@ -1367,7 +1341,6 @@ void JCBTransientAudioProcessorEditor::setupMeters()
     addAndMakeVisible(inputMeterL);
     addAndMakeVisible(inputMeterR);
     // Medidor GR
-    addAndMakeVisible(grMeter);
     
     // Medidores de salida
     addAndMakeVisible(outputMeterL);
@@ -2298,9 +2271,7 @@ void JCBTransientAudioProcessorEditor::updateMeterStates()
     
     // Ocultar gain reduction meter cuando SOLO SC está activo (no hay compresión activa)
     // También considerar si graphics está activo para mantener consistencia
-    // NUEVO: También ocultar cuando BYPASS está activo
-    bool graphicsActive = utilityButtons.runGraphicsButton.getToggleState();
-    grMeter.setVisible(!soloScActive && !graphicsActive && !bypassActive);
+    // Ya no hay gain reduction meter que ocultar
     
     // Actualizar gradiente de salida para modo bypass
     outputMeterL.setBypassMode(bypassActive);
@@ -2384,8 +2355,7 @@ void JCBTransientAudioProcessorEditor::updateMeters()
     scMeterR.setClipDetected(processor.getSidechainClipDetected(1));
     
     // Siempre actualizar medidores de salida y reducción de ganancia
-    grMeter.updateLevel();
-    grMeter.repaint();
+    // Ya no hay grMeter que actualizar
     
     outputMeterL.updateLevel();
     outputMeterR.updateLevel();

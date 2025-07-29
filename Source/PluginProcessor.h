@@ -132,7 +132,6 @@ public:
     // Medidores de audio
     float getRmsInputValue(const int channel) const noexcept;
     float getRmsOutputValue(const int channel) const noexcept;
-    float getGainReductionValue(const int channel) const noexcept;
     float getSCValue(const int channel) const noexcept;
     
     // Detección de clipping
@@ -141,13 +140,10 @@ public:
     bool getSidechainClipDetected(const int channel) const noexcept;
     void resetClipIndicators();
     
-    // Reducción de ganancia para hosts/DAWs
-    float getGainReductionForHost() const noexcept;
     
     // Datos de forma de onda
     void getWaveformData(std::vector<float>& inputSamples, std::vector<float>& processedSamples) const;
-    void getWaveformDataWithGR(std::vector<float>& inputSamples, std::vector<float>& processedSamples, std::vector<float>& gainReductionSamples) const;
-    float getMaxGainReduction() const noexcept;
+    void getAttackSustainData(std::vector<float>& attackSamples, std::vector<float>& sustainSamples) const;
     
     // Sistema híbrido: timestamp + playhead para detección más robusta
     bool isPlaybackActive() const noexcept;
@@ -185,8 +181,8 @@ private:
     // Actualizaciones de medidores
     void updateInputMeters(const juce::AudioBuffer<float>& buffer);
     void updateOutputMeters(const juce::AudioBuffer<float>& buffer);
-    void updateGainReductionMeter();
     void updateSidechainMeters(const juce::AudioBuffer<float>& buffer);
+    void updateAttackSustainGains(int numSamples);
     void captureInputWaveformData(const juce::AudioBuffer<float>& inputBuffer, int numSamples);
     void captureOutputWaveformData(int numSamples);
     
@@ -209,10 +205,7 @@ private:
     std::atomic<float> rightInputRMS{-100.0f};
     std::atomic<float> leftOutputRMS{-100.0f};
     std::atomic<float> rightOutputRMS{-100.0f};
-    std::atomic<float> gainReduction{0.0f};
     
-    // Promedio móvil para gain reduction (replica average~ 4800 1 de Max)
-    MovingAverage4800 grMovingAverage;
     std::atomic<float> leftSC{-100.0f};
     std::atomic<float> rightSC{-100.0f};
     
@@ -224,8 +217,11 @@ private:
     // Buffers para forma de onda
     mutable std::vector<float> currentInputSamples;
     mutable std::vector<float> currentProcessedSamples;
-    mutable std::vector<float> currentGainReductionSamples;
     mutable std::mutex waveformMutex;
+    
+    // Buffers para Attack/Sustain gain histograms
+    mutable std::vector<float> currentAttackGainSamples;
+    mutable std::vector<float> currentSustainGainSamples;
     
     // Gestión de estado
     juce::Point<int> editorSize{1250, 350};
@@ -245,14 +241,7 @@ private:
     std::atomic<bool> outputClipDetected[2] = {false, false};
     std::atomic<bool> sidechainClipDetected[2] = {false, false};
     
-    // Valor de reducción de ganancia para hosts
-    mutable std::atomic<float> currentGainReductionDb{0.0f};
-    mutable std::atomic<float> currentGainReductionLinear{1.0f};
     
-    // Parámetro AAX de reducción de ganancia
-    #if JucePlugin_Build_AAX
-    juce::AudioParameterFloat* aaxGainReductionParam = nullptr;
-    #endif
     
     
     // Flag para indicar destrucción del plugin

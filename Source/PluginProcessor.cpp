@@ -69,26 +69,6 @@ JCBTransientAudioProcessor::JCBTransientAudioProcessor()
         }
     }
 
-    // Añadir parámetro AAX directamente al juce::AudioProcessor (no al APVTS)
-    #if JucePlugin_Build_AAX
-    auto grMeter = std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("aax_gr_meter", 1),  // Version hint fijo para este parámetro
-        "Gain Reduction",
-        juce::NormalisableRange<float>(0.0f, 1.0f),
-        0.0f,  // Default: 0 = sin reducción
-        "",
-        juce::AudioProcessorParameter::compressorLimiterGainReductionMeter);
-    
-    // Guardar referencia antes de moverlo
-    aaxGainReductionParam = grMeter.get();
-    
-    // Añadir directamente al processor, NO al APVTS
-    // El flag compressorLimiterGainReductionMeter ya indica que es un parámetro especial
-    addParameter(grMeter.release());
-
-    // Iniciar timer para actualizar parámetros AAX
-    startTimerHz(30); // 15 Hz es suficiente para el medidor y más seguro
-    #endif
 }
 
 JCBTransientAudioProcessor::~JCBTransientAudioProcessor()
@@ -96,12 +76,7 @@ JCBTransientAudioProcessor::~JCBTransientAudioProcessor()
     // CRÍTICO: Primero indicar que estamos destruyendo para evitar race conditions
     isBeingDestroyed = true;
     
-    // Detener timer AAX inmediatamente (antes que cualquier otra cosa)
-    #if JucePlugin_Build_AAX
-    stopTimer();
-    // Pequeña espera para asegurar que el timer callback no esté ejecutándose
-    juce::Thread::sleep(10);
-    #endif
+    // ELIMINADO: Timer AAX ya no es necesario
     
     // Destruir listeners de parámetros del apvts
     for (int i = 0; i < JCBTransient::num_params(); i++)
@@ -162,7 +137,6 @@ void JCBTransientAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
         const size_t maxWaveformSize = static_cast<size_t>(maxExpectedBufferSize);
         currentInputSamples.resize(maxWaveformSize);
         currentProcessedSamples.resize(maxWaveformSize);
-        currentGainReductionSamples.resize(maxWaveformSize);
     }
     
     // Inicializar latencia basada en el tiempo de lookahead
@@ -183,11 +157,7 @@ void JCBTransientAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     leftOutputRMS.store(-100.0f, std::memory_order_relaxed);
     rightOutputRMS.store(-100.0f, std::memory_order_relaxed);
     
-    gainReduction.store(0.0f, std::memory_order_relaxed);
     
-    // NUEVO: Resetear el promedio móvil cuando se reinicia la reproducción
-    // Esto asegura que el slider comience desde un estado limpio
-    grMovingAverage.reset();
     
     leftSC.store(-100.0f, std::memory_order_relaxed);
     rightSC.store(-100.0f, std::memory_order_relaxed);
@@ -253,8 +223,8 @@ void JCBTransientAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     // Actualizar medidores
     updateInputMeters(buffer);
     updateOutputMeters(buffer);
-    updateGainReductionMeter();
     updateSidechainMeters(buffer);
+    updateAttackSustainGains(buffer.getNumSamples());
 }
 
 //==============================================================================
@@ -444,60 +414,6 @@ void JCBTransientAudioProcessor::updateOutputMeters(const juce::AudioBuffer<floa
     }
 }
 
-void JCBTransientAudioProcessor::updateGainReductionMeter()
-{
-    const int numSamples = grBuffer.getNumSamples();
-    t_sample* grData = m_OutputBuffers[2]; // out3 = gain reduction (valores lineales)
-    
-    // NUEVO: Replicar exactamente Max: outlet 3 → average~ 4800 1 → linear2db → slider
-    float finalAveragedLinear = 1.0f; // Inicializar a 1.0 (sin reducción)
-    
-    // Verificar si hay muestras para procesar
-    if (numSamples > 0 && grData != nullptr) {
-        // Procesar cada muestra con promedio móvil de 4800 muestras (modo absoluto)
-        for (int i = 0; i < numSamples; ++i) {
-            float grLinear = static_cast<float>(grData[i]);
-            // Aplicar promedio móvil con modo absoluto (average~ 4800 1)
-            finalAveragedLinear = grMovingAverage.processSample(grLinear);
-        }
-    } else {
-        // Sin muestras válidas - mantener estado actual del promedio móvil
-        finalAveragedLinear = grMovingAverage.getCurrentAverage();
-    }
-    
-    // CORREGIR: Gen~ out3 da gain multipliers donde:
-    // 1.0 = sin reducción (0 dB en el slider)  
-    // < 1.0 = reducción (valores negativos en el slider)
-    
-    // Convertir de gain multiplier a dB de reducción
-    float valueGR_dB;
-    
-    // CORREGIDO FINAL: Lógica correcta para medidor de gain reduction
-    // Sin reducción = 0 dB (sin barra blanca), Con reducción = valores negativos (barra blanca crece)
-    if (finalAveragedLinear >= 0.999f) {
-        // Sin reducción significativa - mostrar 0 dB (sin barra blanca visible)
-        valueGR_dB = 0.0f;
-    } else {
-        // Hay reducción - convertir a dB negativos donde valores más negativos = más barra
-        constexpr float minLinearValue = 0.000001f; // Evitar -inf
-        finalAveragedLinear = std::max(finalAveragedLinear, minLinearValue);
-        valueGR_dB = juce::Decibels::gainToDecibels(finalAveragedLinear);
-        // Clampear al rango del slider
-        valueGR_dB = juce::jlimit(-100.0f, 0.0f, valueGR_dB);
-    }
-    
-    // CRÍTICO: Usar atomic store para thread safety
-    gainReduction.store(valueGR_dB, std::memory_order_relaxed);
-    
-    // Almacenar el valor para AAX (Pro Tools lo leerá cuando lo necesite)
-    #if JucePlugin_Build_AAX
-    // Gen~ out3 ya devuelve valores lineales donde:
-    // 1.0 = sin reducción
-    // < 1.0 = hay reducción
-    // Usar el valor promediado final en lugar del anterior minGainMultiplier
-    currentGainReductionLinear.store(finalAveragedLinear);
-    #endif
-}
 
 void JCBTransientAudioProcessor::updateSidechainMeters(const juce::AudioBuffer<float>& buffer)
 {
@@ -589,6 +505,52 @@ void JCBTransientAudioProcessor::updateSidechainMeters(const juce::AudioBuffer<f
             sidechainClipDetected[channel] = true;
         }
     }
+}
+
+void JCBTransientAudioProcessor::updateAttackSustainGains(int numSamples)
+{
+    // NUEVO: Capturar salidas 3 y 8 de Gen~ para histogramas Attack/Sustain
+    // Salida 3: Attack gain (-1 a +1) → índice 2 (0-based)
+    // Salida 8: Sustain gain (-1 a +1) → índice 7 (0-based)
+    
+    // Verificar que Gen~ tenga suficientes salidas
+    if (JCBTransient::num_outputs() <= 7) {
+        return; // No hay datos disponibles aún
+    }
+    
+    // AUDIO-THREAD SAFE: Usar try_lock para evitar bloquear el audio thread
+    std::unique_lock<std::mutex> lock(waveformMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return; // Si no puede obtener el lock, salir inmediatamente
+    }
+    
+    // Redimensionar buffers si es necesario
+    if (currentAttackGainSamples.size() < static_cast<size_t>(numSamples)) {
+        currentAttackGainSamples.resize(juce::jmax(numSamples, 4096));
+    }
+    if (currentSustainGainSamples.size() < static_cast<size_t>(numSamples)) {
+        currentSustainGainSamples.resize(juce::jmax(numSamples, 4096));
+    }
+    
+    // Capturar datos de Gen~ (usar primera muestra como representativa)
+    for (int i = 0; i < numSamples; ++i)
+    {
+        // Salida 3 = Attack gain (índice 2)
+        float attackGain = static_cast<float>(m_OutputBuffers[2][i]);
+        // Salida 8 = Sustain gain (índice 7) 
+        float sustainGain = static_cast<float>(m_OutputBuffers[7][i]);
+        
+        // Clampear al rango [-1, 1] para seguridad
+        currentAttackGainSamples[i] = juce::jlimit(-1.0f, 1.0f, attackGain);
+        currentSustainGainSamples[i] = juce::jlimit(-1.0f, 1.0f, sustainGain);
+    }
+}
+
+void JCBTransientAudioProcessor::getAttackSustainData(std::vector<float>& attackSamples, std::vector<float>& sustainSamples) const
+{
+    std::lock_guard<std::mutex> lock(waveformMutex);
+    attackSamples = currentAttackGainSamples;
+    sustainSamples = currentSustainGainSamples;
 }
 
 //==============================================================================
@@ -1046,13 +1008,6 @@ float JCBTransientAudioProcessor::getRmsOutputValue(const int channel) const noe
     return -100.0f;  // Return -100dB for invalid channels
 }
 
-float JCBTransientAudioProcessor::getGainReductionValue(const int channel) const noexcept
-{
-    jassert(channel == 0);
-    if (channel == 0)
-        return gainReduction.load(std::memory_order_relaxed);
-    return 0.0f;
-}
 
 float JCBTransientAudioProcessor::getSCValue(const int channel) const noexcept
 {
@@ -1143,21 +1098,11 @@ void JCBTransientAudioProcessor::captureOutputWaveformData(int numSamples)
     if (currentProcessedSamples.size() < static_cast<size_t>(numSamples)) {
         currentProcessedSamples.resize(juce::jmax(numSamples, 4096));
     }
-    if (currentGainReductionSamples.size() < static_cast<size_t>(numSamples)) {
-        currentGainReductionSamples.resize(juce::jmax(numSamples, 4096));
-    }
     
     // Copiar salida procesada (promedio de canales principales)
-    // Y también capturar la gain reduction de Gen~ (salida 2)
     for (int i = 0; i < numSamples; ++i)
     {
         currentProcessedSamples[i] = (m_OutputBuffers[0][i] + m_OutputBuffers[1][i]) * 0.5f;
-        
-        // Capturar gain reduction directamente de Gen~ (salida 2)
-        // Gen~ devuelve gain lineal, convertir a dB
-        float grLinear = m_OutputBuffers[2][i];
-        currentGainReductionSamples[i] = grLinear > 0.0f ? 
-            20.0f * std::log10(grLinear) : -60.0f;
     }
 }
 
@@ -1168,20 +1113,7 @@ void JCBTransientAudioProcessor::getWaveformData(std::vector<float>& inputSample
     processedSamples = currentProcessedSamples;
 }
 
-void JCBTransientAudioProcessor::getWaveformDataWithGR(std::vector<float>& inputSamples, std::vector<float>& processedSamples, std::vector<float>& gainReductionSamples) const
-{
-    std::lock_guard<std::mutex> lock(waveformMutex);
-    inputSamples = currentInputSamples;
-    processedSamples = currentProcessedSamples;
-    gainReductionSamples = currentGainReductionSamples;
-}
 
-float JCBTransientAudioProcessor::getMaxGainReduction() const noexcept
-{
-    // Método optimizado que obtiene el valor máximo de gain reduction
-    // directamente del valor atómico
-    return gainReduction.load(std::memory_order_relaxed);
-}
 
 
 bool JCBTransientAudioProcessor::isPlaybackActive() const noexcept
@@ -1605,77 +1537,23 @@ void JCBTransientAudioProcessor::resetClipIndicators()
     }
 }
 
-float JCBTransientAudioProcessor::getGainReductionForHost() const noexcept
-{
-    // Devuelve el valor actual del gain reduction en dB
-    // Este valor es actualizado en el audio thread y leído de forma segura aquí
-    return currentGainReductionDb.load();
-}
 
 //==============================================================================
 // Timer implementation
 void JCBTransientAudioProcessor::timerCallback()
 {
-    #if JucePlugin_Build_AAX
-    // CRÍTICO: Verificar si estamos siendo destruidos para evitar acceso a memoria liberada
-    if (isBeingDestroyed.load()) return;
-    
-    // Actualizar el parámetro zz_GR en Gen~ con el valor de gain reduction
-    // Este parámetro es solo para visualización y no participa en undo/redo
-    float grLinear = currentGainReductionLinear.load();
-    
-    // Actualizar el parámetro zz_GR (índice 25) en Gen~
-    // JCBTransient::setparameter(m_PluginState, 25, grLinear, nullptr); // No necesario - Gen~ ya conoce su propio GR
-    
-    // También actualizar el parámetro AAX para que Pro Tools lo muestre
-    if (aaxGainReductionParam != nullptr) 
-    {
-        // Pro Tools espera 0.0 = sin reducción, 1.0 = máxima reducción
-        float normalizedForProTools = juce::jlimit(0.0f, 1.0f, 1.0f - grLinear);
-        
-        // Usar setValueNotifyingHost para notificar a Pro Tools
-        // Al no estar en APVTS, no afecta al undo/redo
-        aaxGainReductionParam->setValueNotifyingHost(normalizedForProTools);
-    }
-    #endif
+    // Timer callback ya no necesario sin gain reduction meter
 }
 
 //==============================================================================
 // Format-specific implementations
 
 #if JucePlugin_Build_AAX
-float JCBTransientAudioProcessor::getAAXMeterValue(int meterID)
-{
-    // Pro Tools llama a este método para obtener el valor del medidor
-    // El ID 0 es típicamente el gain reduction meter
-    if (meterID == 0)
-    {
-        // Obtener el valor lineal de gain reduction
-        float grLinear = currentGainReductionLinear.load();
-        
-        // Gen~ devuelve valores lineales donde:
-        // 1.0 = sin reducción
-        // < 1.0 = hay reducción
-        // Pro Tools espera 0.0 = sin reducción, 1.0 = máxima reducción
-        
-        // Invertir el valor para Pro Tools
-        float normalized = 1.0f - grLinear;
-        
-        return normalized;
-    }
-    
-    return 0.0f;
-}
+// Ya no hay medidor de gain reduction para AAX
 
 #endif
 
 #if JucePlugin_Build_VST3
-void JCBTransientAudioProcessor::updateVST3GainReduction()
-{
-    // Para VST3, necesitaríamos acceso al IEditController
-    // Esto se haría típicamente en el wrapper VST3
-    // Por ahora solo preparamos el método
-}
 #endif
 
 //==============================================================================
