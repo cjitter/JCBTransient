@@ -103,21 +103,25 @@ public:
             else if (name == "speed" || id == "speed") {
                 accentColour = juce::Colour(0xFFFFB366);
             }
-            // COMPRESSOR CORE (Púrpura) - #B366FF (más vivo)
+            // TRANSIENT SHAPERS + OUTPUT CONTROLS - usar colores custom establecidos con setColour()
             else if (name == "tran" || id == "tran" || name == "thd" || id == "thd" ||
-                     name == "sust" || id == "sust" || name == "ratio" || id == "ratio" || 
-                     name == "sens" || id == "sens" || name == "knee" || id == "knee" ||
-                     name == "range" || id == "range") {
+                     name == "sust" || id == "sust" || name == "ratio" || id == "ratio" ||
+                     name == "sens" || id == "sens" ||
+                     name == "drywet" || id == "drywet" || name == "lookahead" || id == "lookahead" ||
+                     name == "clipper" || id == "clipper") {
+                // Usar el color establecido en el componente slider (como HPF/LPF)
+                accentColour = slider.findColour(juce::Slider::rotarySliderOutlineColourId);
+            }
+            // COMPRESSOR CORE (Púrpura) - #B366FF (más vivo)
+            else if (name == "knee" || id == "knee" || name == "range" || id == "range") {
                 accentColour = juce::Colour(0xFFB366FF);
             }
             // AUTO-MAKEUP (Rojo) - #FF6666
-            else if (name == "again" || id == "again" || name == "parall" || id == "parall" ||
-                     name == "clipper" || id == "clipper") {
+            else if (name == "again" || id == "again" || name == "parall" || id == "parall") {
                 accentColour = juce::Colour(0xFFFF6666);
             }
-            // OUTPUT STAGE (Azul) - #6495ED
-            else if (name == "drywet" || id == "drywet" || name == "lookahead" || id == "lookahead" ||
-                     name == "trim" || id == "trim" || name == "makeup" || id == "makeup" ||
+            // OUTPUT STAGE (Azul) - #6495ED - solo trim, makeup, sctrim
+            else if (name == "trim" || id == "trim" || name == "makeup" || id == "makeup" ||
                      name == "sctrim" || id == "sctrim") {
                 accentColour = juce::Colour(0xFF6495ED);
             }
@@ -270,7 +274,7 @@ public:
             if (name == "hpf" || id == "hpf") return "HPF";
             if (name == "lpf" || id == "lpf") return "LPF";
             // Etiquetas actualizadas para transient shaper
-            if (name == "tran" || id == "tran" || name == "thd" || id == "thd") return "TRAN";
+            if (name == "tran" || id == "tran" || name == "thd" || id == "thd") return "TRANS";
             if (name == "sust" || id == "sust" || name == "ratio" || id == "ratio") return "SUST";
             if (name == "sens" || id == "sens" || name == "knee" || id == "knee") return "SENS";
             if (name == "range" || id == "range") return "DMODE";

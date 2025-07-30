@@ -94,7 +94,7 @@ private:
     static constexpr int MIN_HEIGHT = 339;  // 95% de default
     static constexpr int MAX_WIDTH = 1437;  // 115% de default
     static constexpr int MAX_HEIGHT = 410;  // 115% de default
-    static constexpr int TIMER_HZ = 60;
+    static constexpr int TIMER_HZ = 90;  // Incremento moderado para mayor consistencia visual
     
     // Debouncing y timing
     static constexpr juce::uint32 DIAGRAM_BUTTON_DEBOUNCE_MS = 200;
@@ -203,13 +203,13 @@ private:
     
     // Controles izquierdos - fila superior
     struct LeftTopKnobs {
-        CustomSlider thdSlider{"tran"};
-        CustomSlider ratioSlider{"sust"};
-        CustomSlider kneeSlider{"sens"};
+        CustomSlider attackSlider{"tran"};
+        CustomSlider sustainSlider{"sust"};
+        CustomSlider sensSlider{"sens"};
         
-        std::unique_ptr<CustomSliderAttachment> thdAttachment;
-        std::unique_ptr<CustomSliderAttachment> ratioAttachment;
-        std::unique_ptr<CustomSliderAttachment> kneeAttachment;
+        std::unique_ptr<CustomSliderAttachment> attackAttachment;
+        std::unique_ptr<CustomSliderAttachment> sustainAttachment;
+        std::unique_ptr<CustomSliderAttachment> sensAttachment;
     } leftTopKnobs;
     
     // Controles izquierdos - fila inferior
@@ -226,11 +226,9 @@ private:
     // Controles derechos - fila superior
     struct RightTopControls {
         juce::TextButton dmodeButton{"TRANS"};  // Botón de dos posiciones TRANS/SUST
-        CustomSlider reactSlider{"react"};
         CustomSlider smoothSlider{"smo"};
         
         // dmodeAttachment eliminado - usando custom parameter listener
-        std::unique_ptr<CustomSliderAttachment> reactAttachment;
         std::unique_ptr<CustomSliderAttachment> smoothAttachment;
     } rightTopControls;
     

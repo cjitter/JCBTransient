@@ -827,10 +827,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
                                                            juce::AudioParameterIntAttributes().withAutomatable(false).withCategory(juce::AudioProcessorParameter::genericParameter));
 
    // q_SENSITIVITY @min 0 @max 1 @default 0.5 (Detection sensitivity)
-   auto sensitivity = std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("q_SENSITIVITY", versionHint),
-                                                                  juce::CharPointer_UTF8("Sensitivity"),
-                                                                  juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.f),
-                                                                  0.5f);
+   auto sensitivity = std::make_unique<juce::AudioParameterFloat>(
+       juce::ParameterID("q_SENSITIVITY", versionHint),
+       juce::CharPointer_UTF8("Sensitivity"),
+       juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.f),
+       0.5f,
+       juce::String(),
+       juce::AudioParameterFloat::genericParameter,
+       [](float value, int) { return juce::String(juce::roundToInt(value * 100)) + "%"; },
+       nullptr);
 
    // r_KEY @min 0 @max 1 @default 0 (External key input mix)
    auto key = std::make_unique<juce::AudioParameterInt>(juce::ParameterID("r_KEY", versionHint),

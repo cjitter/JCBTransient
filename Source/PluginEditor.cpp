@@ -116,30 +116,30 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Inicializar cache de contenido de código para thread safety
     initializeCodeContentCache();
     
-    // Iniciar timer para updates - 60Hz como ExpansorGate
+    // Iniciar timer para updates - 90Hz para mayor consistencia visual
     startTimerHz(TIMER_HZ);
     
     // Timer para resetear indicadores de clip cada cierto tiempo
     clipResetCounter = 0;
     
     // Inicializar transfer display con valores actuales
-    float thresholdDB = leftTopKnobs.thdSlider.getValue();
+    float thresholdDB = leftTopKnobs.attackSlider.getValue();
     transferDisplay.setThreshold(thresholdDB);
-    transferDisplay.setRatio(leftTopKnobs.ratioSlider.getValue());
-    transferDisplay.setKnee(leftTopKnobs.kneeSlider.getValue());
+    transferDisplay.setRatio(leftTopKnobs.sustainSlider.getValue());
+    transferDisplay.setKnee(leftTopKnobs.sensSlider.getValue());
     // ELIMINADO: setRange - ahora dmodeButton maneja h_DELTAMODE directamente
     
     // Conectar callbacks del transfer display para actualizar knobs
     transferDisplay.onThresholdChange = [this](float newThreshold) {
-        leftTopKnobs.thdSlider.setValue(newThreshold, juce::sendNotification);
+        leftTopKnobs.attackSlider.setValue(newThreshold, juce::sendNotification);
         handleParameterChange();  // Marcar preset como modificado
     };
     transferDisplay.onRatioChange = [this](float newRatio) {
-        leftTopKnobs.ratioSlider.setValue(newRatio, juce::sendNotification);
+        leftTopKnobs.sustainSlider.setValue(newRatio, juce::sendNotification);
         handleParameterChange();  // Marcar preset como modificado
     };
     transferDisplay.onKneeChange = [this](float newKnee) {
-        leftTopKnobs.kneeSlider.setValue(newKnee, juce::sendNotification);
+        leftTopKnobs.sensSlider.setValue(newKnee, juce::sendNotification);
         handleParameterChange();  // Marcar preset como modificado
     };
     // ELIMINADO: onRangeChange - dmodeButton no usa callbacks de transferDisplay
@@ -348,9 +348,9 @@ void JCBTransientAudioProcessorEditor::resized()
     transferDisplay.setBounds(getScaledBounds(x, y, w, h));
     // === LEFT SIDE KNOBS === (Between SC meters and transfer function)
     // Top row - TRAN, SUST, SENS (RANGE movido al lado derecho)
-    leftTopKnobs.thdSlider.setBounds(getScaledBounds(50, 48, 53, 53));
-    leftTopKnobs.ratioSlider.setBounds(getScaledBounds(100, 48, 53, 53));
-    leftTopKnobs.kneeSlider.setBounds(getScaledBounds(150, 48, 53, 53));
+    leftTopKnobs.sensSlider.setBounds(getScaledBounds(50, 48, 53, 53));
+    leftTopKnobs.attackSlider.setBounds(getScaledBounds(100, 48, 53, 53));
+    leftTopKnobs.sustainSlider.setBounds(getScaledBounds(150, 48, 53, 53));
 
     // Bottom row - D/W, LA, CLIP (AGAIN está en fila superior)
     leftBottomKnobs.drywetSlider.setBounds(getScaledBounds(74, 100, 53, 53));
@@ -359,9 +359,8 @@ void JCBTransientAudioProcessorEditor::resized()
 
     // === RIGHT SIDE CONTROLS ===
     // Top row - RANGE, REACT, SMOOTH knobs
-    rightTopControls.dmodeButton.setBounds(getScaledBounds(515, 60, 30, 30));
-    rightTopControls.reactSlider.setBounds(getScaledBounds(565, 48, 53, 53));
-    rightTopControls.smoothSlider.setBounds(getScaledBounds(625, 48, 53, 53));
+    rightTopControls.dmodeButton.setBounds(getScaledBounds(532, 67, 30, 20));
+    rightTopControls.smoothSlider.setBounds(getScaledBounds(570, 48, 53, 53));
 
     // Bottom row - Attack, Release, Hold
     rightBottomKnobs.atkSlider.setBounds(getScaledBounds(473, 100, 53, 53));
@@ -420,11 +419,11 @@ void JCBTransientAudioProcessorEditor::resized()
     const int buttonSpacing = 45;   // Espaciado entre DELTA-DIAGRAM y DIAGRAM-BYPASS
     
     // DIAGRAM centrado en mismo X que botones de sidechain (FILTERS, EXT KEY, SOLO SC)
-    centerButtons.diagramButton.setBounds(getScaledBounds(diagramCenterX - 22, centerButtonsY, 44, 12));
+    centerButtons.diagramButton.setBounds(getScaledBounds(diagramCenterX - 45, centerButtonsY, 40, 12));
     // DELTA movido a la izquierda del slider RANGE - botón rectangular más alto que ancho
-    parameterButtons.deltaButton.setBounds(getScaledBounds(480, 60, 30, 30));
+    parameterButtons.deltaButton.setBounds(getScaledBounds(495, 67, 30, 20));
     // BYPASS a la derecha de DIAGRAM  
-    parameterButtons.bypassButton.setBounds(getScaledBounds(diagramCenterX + buttonSpacing - 20, centerButtonsY, 40, 12));
+    parameterButtons.bypassButton.setBounds(getScaledBounds(diagramCenterX + buttonSpacing - 45, centerButtonsY, 40, 12));
     
     // Botones TODO movidos abajo a la derecha, centrados en el rectángulo
     // Calcular posición central para el grupo de botones TODO
@@ -439,7 +438,7 @@ void JCBTransientAudioProcessorEditor::resized()
     
     // === TÍTULO Y VERSIÓN (CENTRO INFERIOR) ===
     // Ancho similar a botones DIAGRAM + GEN DSP combinados
-    titleLink.setBounds(getScaledBounds(304, 179, 95, 15));
+    titleLink.setBounds(getScaledBounds(305, 179, 95, 15));
     
     // Tooltip en esquina superior derecha - ajustado al rectángulo visible
     tooltipComponent.setBounds(getScaledBounds(450, 0, 228, 42));
@@ -513,9 +512,9 @@ void JCBTransientAudioProcessorEditor::timerCallback()
         topButtons.abCopyButton.setTooltip(isSpanish ? "Copiar B a A" : "Copy B to A");
     }
     
-    // Resetear indicadores de clip cada 3 segundos (180 frames a 60Hz)
+    // Resetear indicadores de clip cada 3 segundos (270 frames a 90Hz)
     clipResetCounter++;
-    if (clipResetCounter >= 180) {
+    if (clipResetCounter >= 270) {
         processor.resetClipIndicators();
         clipResetCounter = 0;
     }
@@ -985,75 +984,82 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     
     // === LEFT TOP KNOBS ===
     // TRAN (Attack Gain)
-    leftTopKnobs.thdSlider.setName("tran");  // Para mostrar TRAN dentro del knob
-    leftTopKnobs.thdSlider.setComponentID("tran");
-    leftTopKnobs.thdSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    leftTopKnobs.thdSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
-    leftTopKnobs.thdSlider.setLookAndFeel(&sliderLAFBig);
-    leftTopKnobs.thdSlider.setTextBoxIsEditable(true);
-    leftTopKnobs.thdSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    leftTopKnobs.thdSlider.setDoubleClickReturnValue(true, 0.0);
-    leftTopKnobs.thdSlider.setPopupDisplayEnabled(false, false, this);
-    leftTopKnobs.thdSlider.setNumDecimalPlacesToDisplay(1);
-    leftTopKnobs.thdSlider.setTextValueSuffix(" dB");
+    leftTopKnobs.attackSlider.setName("trans");  // Para mostrar TRANS dentro del knob
+    leftTopKnobs.attackSlider.setComponentID("tran");
+    leftTopKnobs.attackSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    leftTopKnobs.attackSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
+    leftTopKnobs.attackSlider.setLookAndFeel(&sliderLAFBig);
+    leftTopKnobs.attackSlider.setTextBoxIsEditable(true);
+    leftTopKnobs.attackSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color naranja claro para TRANS (más visible que histograma Attack)
+    leftTopKnobs.attackSlider.setColour(juce::Slider::rotarySliderOutlineColourId, DarkTheme::accentWarmLight);
+    leftTopKnobs.attackSlider.setDoubleClickReturnValue(true, 0.0);
+    leftTopKnobs.attackSlider.setPopupDisplayEnabled(false, false, this);
+    leftTopKnobs.attackSlider.setNumDecimalPlacesToDisplay(1);
+    leftTopKnobs.attackSlider.setTextValueSuffix(" dB");
     // Configurar rango para Attack Gain: -18 a +18 dB, centrado en 0
-    leftTopKnobs.thdSlider.setRange(-18.0, 18.0, 0.1);
-    leftTopKnobs.thdSlider.setSkewFactorFromMidPoint(0.0);  // 0dB en el centro
-    addAndMakeVisible(leftTopKnobs.thdSlider);
+    leftTopKnobs.attackSlider.setRange(-18.0, 18.0, 0.1);
+    leftTopKnobs.attackSlider.setSkewFactorFromMidPoint(0.0);  // 0dB en el centro
+    addAndMakeVisible(leftTopKnobs.attackSlider);
     if (auto* param = processor.apvts.getParameter("b_ATTACK_GAIN"))
     {
-        leftTopKnobs.thdAttachment = std::make_unique<CustomSliderAttachment>(
-            *param, leftTopKnobs.thdSlider, &undoManager);
-        leftTopKnobs.thdAttachment->onParameterChange = [this]() { handleParameterChange(); };
+        leftTopKnobs.attackAttachment = std::make_unique<CustomSliderAttachment>(
+            *param, leftTopKnobs.attackSlider, &undoManager);
+        leftTopKnobs.attackAttachment->onParameterChange = [this]() { handleParameterChange(); };
     }
-    leftTopKnobs.thdSlider.setTooltip(JUCE_UTF8("ATTACK GAIN: ganancia para transientes de ataque entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB"));
+    leftTopKnobs.attackSlider.setTooltip(JUCE_UTF8("ATTACK GAIN: ganancia para transientes de ataque entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB"));
     
     // SUST (Sustain Gain)
-    leftTopKnobs.ratioSlider.setName("sust");  // Para mostrar SUST dentro del knob
-    leftTopKnobs.ratioSlider.setComponentID("sust");
-    leftTopKnobs.ratioSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    leftTopKnobs.ratioSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
-    leftTopKnobs.ratioSlider.setLookAndFeel(&sliderLAFBig);
-    leftTopKnobs.ratioSlider.setTextBoxIsEditable(true);  // Ahora editable
-    leftTopKnobs.ratioSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    leftTopKnobs.ratioSlider.setDoubleClickReturnValue(true, 0.0);
-    leftTopKnobs.ratioSlider.setPopupDisplayEnabled(false, false, this);
-    leftTopKnobs.ratioSlider.setNumDecimalPlacesToDisplay(1);
-    leftTopKnobs.ratioSlider.setTextValueSuffix(" dB");
+    leftTopKnobs.sustainSlider.setName("sust");  // Para mostrar SUST dentro del knob
+    leftTopKnobs.sustainSlider.setComponentID("sust");
+    leftTopKnobs.sustainSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    leftTopKnobs.sustainSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
+    leftTopKnobs.sustainSlider.setLookAndFeel(&sliderLAFBig);
+    leftTopKnobs.sustainSlider.setTextBoxIsEditable(true);  // Ahora editable
+    leftTopKnobs.sustainSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color azul para SUST (igual que histograma Sustain)
+    leftTopKnobs.sustainSlider.setColour(juce::Slider::rotarySliderOutlineColourId, DarkTheme::accent);
+    leftTopKnobs.sustainSlider.setDoubleClickReturnValue(true, 0.0);
+    leftTopKnobs.sustainSlider.setPopupDisplayEnabled(false, false, this);
+    leftTopKnobs.sustainSlider.setNumDecimalPlacesToDisplay(1);
+    leftTopKnobs.sustainSlider.setTextValueSuffix(" dB");
     // Configurar rango para Sustain Gain: -18 a +18 dB, centrado en 0
-    leftTopKnobs.ratioSlider.setRange(-18.0, 18.0, 0.1);
-    leftTopKnobs.ratioSlider.setSkewFactorFromMidPoint(0.0);  // 0dB en el centro
-    addAndMakeVisible(leftTopKnobs.ratioSlider);
+    leftTopKnobs.sustainSlider.setRange(-18.0, 18.0, 0.1);
+    leftTopKnobs.sustainSlider.setSkewFactorFromMidPoint(0.0);  // 0dB en el centro
+    addAndMakeVisible(leftTopKnobs.sustainSlider);
     if (auto* param = processor.apvts.getParameter("c_SUSTAIN_GAIN"))
     {
-        leftTopKnobs.ratioAttachment = std::make_unique<CustomSliderAttachment>(
-            *param, leftTopKnobs.ratioSlider, &undoManager);
-        leftTopKnobs.ratioAttachment->onParameterChange = [this]() { handleParameterChange(); };
+        leftTopKnobs.sustainAttachment = std::make_unique<CustomSliderAttachment>(
+            *param, leftTopKnobs.sustainSlider, &undoManager);
+        leftTopKnobs.sustainAttachment->onParameterChange = [this]() { handleParameterChange(); };
     }
-    leftTopKnobs.ratioSlider.setTooltip(JUCE_UTF8("SUSTAIN GAIN: ganancia para transientes de sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB"));
+    leftTopKnobs.sustainSlider.setTooltip(JUCE_UTF8("SUSTAIN GAIN: ganancia para transientes de sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB"));
 
     // SENS (Sensitivity)
-    leftTopKnobs.kneeSlider.setName("sens");  // Para mostrar SENS dentro del knob
-    leftTopKnobs.kneeSlider.setComponentID("sens");
-    leftTopKnobs.kneeSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    leftTopKnobs.kneeSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
-    leftTopKnobs.kneeSlider.setLookAndFeel(&sliderLAFBig);
-    leftTopKnobs.kneeSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    leftTopKnobs.kneeSlider.setTextBoxIsEditable(true);
-    leftTopKnobs.kneeSlider.setDoubleClickReturnValue(true, 0.5);
-    leftTopKnobs.kneeSlider.setPopupDisplayEnabled(false, false, this);
-    leftTopKnobs.kneeSlider.setNumDecimalPlacesToDisplay(2);  // 2 decimales para valores 0-1
+    leftTopKnobs.sensSlider.setName("sens");  // Para mostrar SENS dentro del knob
+    leftTopKnobs.sensSlider.setComponentID("sens");
+    leftTopKnobs.sensSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    leftTopKnobs.sensSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
+    leftTopKnobs.sensSlider.setLookAndFeel(&sliderLAFBig);
+    leftTopKnobs.sensSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color amarillo para SENS (distintivo)
+    leftTopKnobs.sensSlider.setColour(juce::Slider::rotarySliderOutlineColourId, DarkTheme::accentYellow);
+    leftTopKnobs.sensSlider.setTextBoxIsEditable(true);
+    leftTopKnobs.sensSlider.setDoubleClickReturnValue(true, 0.5);
+    leftTopKnobs.sensSlider.setPopupDisplayEnabled(false, false, this);
+    leftTopKnobs.sensSlider.setNumDecimalPlacesToDisplay(0);  // Sin decimales para mostrar porcentajes
+    leftTopKnobs.sensSlider.textFromValueFunction = [](double value) { return juce::String(juce::roundToInt(value * 100)) + "%"; };
     // Configurar rango para Sensitivity: 0 a 1, centrado en 0.5
-    leftTopKnobs.kneeSlider.setRange(0.0, 1.0, 0.01);
-    leftTopKnobs.kneeSlider.setSkewFactorFromMidPoint(0.5);  // 0.5 en el centro
-    addAndMakeVisible(leftTopKnobs.kneeSlider);
+    leftTopKnobs.sensSlider.setRange(0.0, 1.0, 0.01);
+    leftTopKnobs.sensSlider.setSkewFactorFromMidPoint(0.5);  // 0.5 en el centro
+    addAndMakeVisible(leftTopKnobs.sensSlider);
     if (auto* param = processor.apvts.getParameter("q_SENSITIVITY"))
     {
-        leftTopKnobs.kneeAttachment = std::make_unique<CustomSliderAttachment>(
-            *param, leftTopKnobs.kneeSlider, &undoManager);
-        leftTopKnobs.kneeAttachment->onParameterChange = [this]() { handleParameterChange(); };
+        leftTopKnobs.sensAttachment = std::make_unique<CustomSliderAttachment>(
+            *param, leftTopKnobs.sensSlider, &undoManager);
+        leftTopKnobs.sensAttachment->onParameterChange = [this]() { handleParameterChange(); };
     }
-    leftTopKnobs.kneeSlider.setTooltip(JUCE_UTF8("SENSITIVITY: sensibilidad de detección entre 0 y 1.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 0.5"));
+    leftTopKnobs.sensSlider.setTooltip(JUCE_UTF8("SENSITIVITY: sensibilidad de detección entre 0 y 1.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 0.5"));
 
     // === PERILLAS INFERIORES IZQUIERDAS ===
     // D/W (Seco/Húmedo)
@@ -1062,6 +1068,8 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     leftBottomKnobs.drywetSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
     leftBottomKnobs.drywetSlider.setLookAndFeel(&sliderLAFBig);
     leftBottomKnobs.drywetSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color blanco para D/W
+    leftBottomKnobs.drywetSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::white);
     leftBottomKnobs.drywetSlider.setDoubleClickReturnValue(true, 1.0);
     leftBottomKnobs.drywetSlider.setPopupDisplayEnabled(false, false, this);
     // Visualización personalizada de valor para porcentaje
@@ -1084,6 +1092,8 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     leftBottomKnobs.lookaheadSlider.setLookAndFeel(&sliderLAFBig);
     leftBottomKnobs.lookaheadSlider.setTextBoxIsEditable(true);
     leftBottomKnobs.lookaheadSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color blanco para LA
+    leftBottomKnobs.lookaheadSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::white);
     leftBottomKnobs.lookaheadSlider.setTextValueSuffix(" ms");
     leftBottomKnobs.lookaheadSlider.setRange(0.0, 10.0, 0.1);
     leftBottomKnobs.lookaheadSlider.setValue(0.0);
@@ -1106,6 +1116,8 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     leftBottomKnobs.clipSlider.setLookAndFeel(&sliderLAFBig);
     leftBottomKnobs.clipSlider.setTextBoxIsEditable(true);
     leftBottomKnobs.clipSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    // Configurar color blanco para CLIP
+    leftBottomKnobs.clipSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::white);
 
     leftBottomKnobs.clipSlider.setValue(0.0);
     leftBottomKnobs.clipSlider.setDoubleClickReturnValue(true, 0.0);
@@ -1227,7 +1239,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     parameterButtons.deltaButton.setButtonText("DELTA");
     parameterButtons.deltaButton.setClickingTogglesState(true);
     parameterButtons.deltaButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::darkviolet.withAlpha(0.3f)); // Mismo color que FILTERS
+    parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::green.withAlpha(0.3f)); // Color verde cuando ON
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary.withAlpha(0.7f));
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
     parameterButtons.deltaButton.addListener(this);
@@ -1240,7 +1252,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     // DMODE - botón de dos posiciones TRANS/SUST (reemplaza RANGE slider)
     rightTopControls.dmodeButton.setClickingTogglesState(true);
     rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::orange.withAlpha(0.3f));  // Naranja para SUST
+    rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, DarkTheme::accentWarm.withAlpha(0.3f));  // Naranja coordinado con Attack
     rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary.withAlpha(0.7f));
     rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
     rightTopControls.dmodeButton.addListener(this);
@@ -1289,45 +1301,21 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     // El tooltip se establecerá en updateAllTooltips()
     
     // === CONTROLES SUPERIORES DERECHOS (SLIDERS) ===
-    // REACT
-    rightTopControls.reactSlider.setComponentID("react");
-    rightTopControls.reactSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    rightTopControls.reactSlider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 70, 16);
-    rightTopControls.reactSlider.setLookAndFeel(&sliderLAFBig);
-    rightTopControls.reactSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    rightTopControls.reactSlider.setRange(0.0, 1.0, 0.01);
-    rightTopControls.reactSlider.setDoubleClickReturnValue(true, 0.0);
-    rightTopControls.reactSlider.setPopupDisplayEnabled(false, false, this);
-    // Formato de texto personalizado para REACT: PEAK a RMS
-    rightTopControls.reactSlider.textFromValueFunction = [](double value) {
-        if (value < 0.01)
-            return juce::String("PEAK");
-        else if (value > 0.99)
-            return juce::String("RMS");
-        else
-            return juce::String(value, 2);
-    };
-    addAndMakeVisible(rightTopControls.reactSlider);
-    if (auto* param = processor.apvts.getParameter("g_REACT"))
-    {
-        rightTopControls.reactAttachment = std::make_unique<CustomSliderAttachment>(
-            *param, rightTopControls.reactSlider, &undoManager);
-        rightTopControls.reactAttachment->onParameterChange = [this]() { handleParameterChange(); };
-    }
+    // REACT ELIMINADO - parámetro ya no existe en Gen~
     
     // Conectar perillas al transfer display
-    leftTopKnobs.thdSlider.onValueChange = [this]() {
+    leftTopKnobs.attackSlider.onValueChange = [this]() {
         // THD ahora está en rango de dB (-60 a 0)
-        float thresholdDB = static_cast<float>(leftTopKnobs.thdSlider.getValue());
+        float thresholdDB = static_cast<float>(leftTopKnobs.attackSlider.getValue());
         transferDisplay.setThreshold(thresholdDB);
         updateTransferDisplay();
     };
-    leftTopKnobs.ratioSlider.onValueChange = [this]() {
-        transferDisplay.setRatio(static_cast<float>(leftTopKnobs.ratioSlider.getValue()));
+    leftTopKnobs.sustainSlider.onValueChange = [this]() {
+        transferDisplay.setRatio(static_cast<float>(leftTopKnobs.sustainSlider.getValue()));
         updateTransferDisplay();
     };
-    leftTopKnobs.kneeSlider.onValueChange = [this]() {
-        transferDisplay.setKnee(static_cast<float>(leftTopKnobs.kneeSlider.getValue()));
+    leftTopKnobs.sensSlider.onValueChange = [this]() {
+        transferDisplay.setKnee(static_cast<float>(leftTopKnobs.sensSlider.getValue()));
         updateTransferDisplay();
     };
     // ELIMINADO: rangeSlider callback - dmodeButton no necesita transferDisplay
@@ -1664,12 +1652,12 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
             if (auto* param = processor.apvts.getParameter("b_THD")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
-                leftTopKnobs.thdSlider.setValue(realValue, juce::sendNotificationSync);
+                leftTopKnobs.attackSlider.setValue(realValue, juce::sendNotificationSync);
             }
             if (auto* param = processor.apvts.getParameter("c_RATIO")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
-                leftTopKnobs.ratioSlider.setValue(realValue, juce::sendNotificationSync);
+                leftTopKnobs.sustainSlider.setValue(realValue, juce::sendNotificationSync);
             }
             if (auto* param = processor.apvts.getParameter("d_ATK")) {
                 float defaultValue = param->getDefaultValue();
@@ -1686,16 +1674,12 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 rightBottomKnobs.holdSlider.setValue(realValue, juce::sendNotificationSync);
             }
-            if (auto* param = processor.apvts.getParameter("g_REACT")) {
-                float defaultValue = param->getDefaultValue();
-                float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
-                rightTopControls.reactSlider.setValue(realValue, juce::sendNotificationSync);
-            }
+            // REACT ELIMINADO - parámetro ya no existe
             // ELIMINADO: h_RANGE reset - dmodeButton para h_DELTAMODE se resetea automáticamente
             if (auto* param = processor.apvts.getParameter("q_KNEE")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
-                leftTopKnobs.kneeSlider.setValue(realValue, juce::sendNotificationSync);
+                leftTopKnobs.sensSlider.setValue(realValue, juce::sendNotificationSync);
             }
             if (auto* param = processor.apvts.getParameter("i_MAKEUP")) {
                 float defaultValue = param->getDefaultValue();
@@ -2052,7 +2036,7 @@ void JCBTransientAudioProcessorEditor::setupParameterButtons()
     // Botón DELTA - movido desde rightBottomKnobs
     parameterButtons.deltaButton.setClickingTogglesState(true);
     parameterButtons.deltaButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
-    parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::darkviolet.withAlpha(0.3f)); // Mismo color que FILTERS
+    parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::green.withAlpha(0.3f)); // Color verde cuando ON
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary.withAlpha(0.7f));
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
     parameterButtons.deltaButton.addListener(this);
@@ -2232,11 +2216,24 @@ void JCBTransientAudioProcessorEditor::updateDmodeButtonText()
         // 0 = TRANS (OFF), 2 = SUST (ON), 1 = Unused
         if (value == 0) {
             rightTopControls.dmodeButton.setButtonText("TRANS");
+            // TRANS está OFF: usar buttonColourId (estado OFF) con naranja claro
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, DarkTheme::accentWarmLight.withAlpha(0.3f));
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::transparentBlack);
+            // Texto blanco para máxima legibilidad sobre fondo naranja
+            rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
         } else if (value == 2) {
             rightTopControls.dmodeButton.setButtonText("SUST");
+            // SUST está ON: usar buttonOnColourId (estado ON) con azul
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, DarkTheme::accent.withAlpha(0.3f));
+            // Texto blanco para máxima legibilidad sobre fondo azul
+            rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
         } else {
             // Fallback para valor inesperado
             rightTopControls.dmodeButton.setButtonText("TRANS");
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, DarkTheme::accentWarmLight.withAlpha(0.3f));
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::transparentBlack);
+            rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
         }
     }
 }
@@ -2281,10 +2278,10 @@ void JCBTransientAudioProcessorEditor::updateMeterStates()
 void JCBTransientAudioProcessorEditor::updateTransferDisplay()
 {
     // Actualizar los valores de los parámetros desde los sliders
-    float thresholdDB = leftTopKnobs.thdSlider.getValue();
+    float thresholdDB = leftTopKnobs.attackSlider.getValue();
     transferDisplay.setThreshold(thresholdDB);
-    transferDisplay.setRatio(leftTopKnobs.ratioSlider.getValue());
-    transferDisplay.setKnee(leftTopKnobs.kneeSlider.getValue());
+    transferDisplay.setRatio(leftTopKnobs.sustainSlider.getValue());
+    transferDisplay.setKnee(leftTopKnobs.sensSlider.getValue());
     
     // Actualizar estados de sidechain
     transferDisplay.setExtKeyActive(sidechainControls.keyButton.getToggleState());
@@ -2334,7 +2331,7 @@ void JCBTransientAudioProcessorEditor::updateMeters()
         lastExtKeyActive = extKeyActive;
     }
     
-    // Actualizar medidores con control centralizado a 60 Hz
+    // Actualizar medidores con control centralizado a 90 Hz
     // Llamar a updateLevel() de cada medidor para procesar valores y animaciones
     if (inputMeterL.isVisible()) {
         inputMeterL.updateLevel();
@@ -2372,13 +2369,13 @@ void JCBTransientAudioProcessorEditor::updateSliderValues()
     
     // Left top knobs - Todos usan CustomSliderAttachment
     if (auto* param = processor.apvts.getRawParameterValue("b_THD"))
-        leftTopKnobs.thdSlider.setValue(param->load(), juce::dontSendNotification);
+        leftTopKnobs.attackSlider.setValue(param->load(), juce::dontSendNotification);
     
     if (auto* param = processor.apvts.getRawParameterValue("c_RATIO"))
-        leftTopKnobs.ratioSlider.setValue(param->load(), juce::dontSendNotification);
+        leftTopKnobs.sustainSlider.setValue(param->load(), juce::dontSendNotification);
         
     if (auto* param = processor.apvts.getRawParameterValue("q_KNEE"))
-        leftTopKnobs.kneeSlider.setValue(param->load(), juce::dontSendNotification);
+        leftTopKnobs.sensSlider.setValue(param->load(), juce::dontSendNotification);
     
     // Left bottom knobs
     if (auto* param = processor.apvts.getRawParameterValue("o_DRYWET"))
@@ -2393,8 +2390,7 @@ void JCBTransientAudioProcessorEditor::updateSliderValues()
     
     // Right top controls
         
-    if (auto* param = processor.apvts.getRawParameterValue("g_REACT"))
-        rightTopControls.reactSlider.setValue(param->load(), juce::dontSendNotification);
+    // REACT ELIMINADO - parámetro ya no existe
     
     // Right bottom knobs - Todos usan CustomSliderAttachment
     if (auto* param = processor.apvts.getRawParameterValue("d_ATK"))
@@ -2944,9 +2940,9 @@ void JCBTransientAudioProcessorEditor::updateAllTooltips()
     titleLink.setTooltip(getTooltipText("title"));
     
     // Perillas - superiores izquierdas
-    leftTopKnobs.thdSlider.setTooltip(getTooltipText("tran"));
-    leftTopKnobs.ratioSlider.setTooltip(getTooltipText("sust"));
-    leftTopKnobs.kneeSlider.setTooltip(getTooltipText("sens"));
+    leftTopKnobs.attackSlider.setTooltip(getTooltipText("tran"));
+    leftTopKnobs.sustainSlider.setTooltip(getTooltipText("sust"));
+    leftTopKnobs.sensSlider.setTooltip(getTooltipText("sens"));
     
     // Perillas - inferiores izquierdas
     leftBottomKnobs.drywetSlider.setTooltip(getTooltipText("drywet"));
@@ -2955,7 +2951,7 @@ void JCBTransientAudioProcessorEditor::updateAllTooltips()
     
     // Perillas - superiores derechas
     rightTopControls.dmodeButton.setTooltip(getTooltipText("dmode"));
-    rightTopControls.reactSlider.setTooltip(getTooltipText("react"));
+    // REACT ELIMINADO
     rightTopControls.smoothSlider.setTooltip(getTooltipText("smooth"));
     
     // Perillas - inferiores derechas
@@ -3110,16 +3106,16 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
 void JCBTransientAudioProcessorEditor::applyAlphaToMainControls(float alpha)
 {
     // Main knobs
-    leftTopKnobs.thdSlider.setAlpha(alpha);
-    leftTopKnobs.ratioSlider.setAlpha(alpha);
-    leftTopKnobs.kneeSlider.setAlpha(alpha);
+    leftTopKnobs.attackSlider.setAlpha(alpha);
+    leftTopKnobs.sustainSlider.setAlpha(alpha);
+    leftTopKnobs.sensSlider.setAlpha(alpha);
     
     leftBottomKnobs.drywetSlider.setAlpha(alpha);
     leftBottomKnobs.lookaheadSlider.setAlpha(alpha);
     leftBottomKnobs.clipSlider.setAlpha(alpha);
     
     rightTopControls.dmodeButton.setAlpha(alpha);
-    rightTopControls.reactSlider.setAlpha(alpha);
+    // REACT ELIMINADO
     rightTopControls.smoothSlider.setAlpha(alpha);
     
     rightBottomKnobs.atkSlider.setAlpha(alpha);
@@ -3374,9 +3370,9 @@ int JCBTransientAudioProcessorEditor::getControlParameterIndex(juce::Component& 
     juce::String parameterID;
     
     // Perillas Superiores Izquierdas (threshold, ratio, knee)
-    if (&control == &leftTopKnobs.thdSlider) parameterID = "b_THD";
-    else if (&control == &leftTopKnobs.ratioSlider) parameterID = "c_RATIO";
-    else if (&control == &leftTopKnobs.kneeSlider) parameterID = "q_KNEE";
+    if (&control == &leftTopKnobs.attackSlider) parameterID = "b_THD";
+    else if (&control == &leftTopKnobs.sustainSlider) parameterID = "c_RATIO";
+    else if (&control == &leftTopKnobs.sensSlider) parameterID = "q_KNEE";
     
     // Perillas Inferiores Izquierdas (drywet, lookahead, clip, autogain)
     else if (&control == &leftBottomKnobs.drywetSlider) parameterID = "o_DRYWET";
@@ -3385,7 +3381,7 @@ int JCBTransientAudioProcessorEditor::getControlParameterIndex(juce::Component& 
     
     // Controles Superiores Derechos (range, react, smooth)
     else if (&control == &rightTopControls.dmodeButton) parameterID = "h_DELTAMODE";
-    else if (&control == &rightTopControls.reactSlider) parameterID = "g_REACT";
+    // REACT ELIMINADO
     else if (&control == &rightTopControls.smoothSlider) parameterID = "z_SMOOTH";
     
     // Perillas Inferiores Derechas (attack, release, hold)

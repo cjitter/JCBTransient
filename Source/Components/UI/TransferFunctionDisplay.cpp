@@ -802,6 +802,43 @@ void TransferFunctionDisplay::updateWaveformData(const float* inputSamples, cons
     
     int writeIndex = waveformWriteIndex.load();
     
+    // NUEVO: Verificar si hay señal o silencio (igual que en el otro método)
+    float maxSignalLevel = 0.0f;
+    for (int i = 0; i < numSamples; i += 64)  // Chequeo rápido cada 64 muestras
+    {
+        maxSignalLevel = juce::jmax(maxSignalLevel, std::abs(processedSamples[i]));
+        if (maxSignalLevel > silenceLevel) break;
+    }
+    
+    // NUEVO: Actualizar contador de silencio
+    if (maxSignalLevel < silenceLevel)
+    {
+        int currentSilenceCounter = silenceCounter.load(std::memory_order_relaxed);
+        silenceCounter.store(currentSilenceCounter + 1, std::memory_order_relaxed);
+        
+        if (currentSilenceCounter > silenceThreshold)
+        {
+            isSilent.store(true, std::memory_order_relaxed);
+            // Comenzar fade out progresivo
+            float currentFade = fadeOutFactor.load(std::memory_order_relaxed);
+            fadeOutFactor.store(currentFade * 0.95f, std::memory_order_relaxed);  // Desvanecimiento gradual
+            
+            // Solo limpiar cuando el fade es muy bajo
+            if (currentFade < 0.05f)
+            {
+                fadeOutFactor.store(0.0f, std::memory_order_relaxed);
+                // Mantener los datos pero con fade completo
+            }
+        }
+    }
+    else
+    {
+        silenceCounter.store(0, std::memory_order_relaxed);
+        isSilent.store(false, std::memory_order_relaxed);
+        fadeOutFactor.store(1.0f, std::memory_order_relaxed);  // Restaurar opacidad completa
+        hasWaveformData.store(true);
+    }
+    
     // Procesar todas las muestras con el mismo timestamp
     for (int i = 0; i < numSamples; ++i)
     {
@@ -825,7 +862,7 @@ void TransferFunctionDisplay::updateWaveformData(const float* inputSamples, cons
     
     // Actualizar índice de escritura una sola vez al final
     waveformWriteIndex.store(writeIndex);
-    hasWaveformData.store(true);
+    // NOTA: hasWaveformData se actualiza arriba en la lógica de detección de silencio
 }
 
 void TransferFunctionDisplay::updateWaveformDataWithGR(const float* inputSamples, const float* processedSamples, const float* gainReductionSamples, int numSamples)
@@ -971,116 +1008,117 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
     // NO expandir bounds - mantener dentro del área del gráfico
     // bounds = bounds.expanded(60.0f, 10.0f);  // COMENTADO - causaba el bloque azul
     
-    // Determinar el rango de dB según el nivel de zoom (una sola vez, fuera del loop)
-    float minDb, maxDb;
-    switch (currentZoom)
-    {
-        case ZoomLevel::Normal:
-            minDb = -100.0f;
-            maxDb = 0.0f;
-            break;
-        case ZoomLevel::Zoomed:
-            minDb = -50.0f;
-            maxDb = 0.0f;
-            break;
-    }
+    // ELIMINADO: Variables no utilizadas con nueva visualización pico-valle
+    // float minDb, maxDb - ya no necesario para mapeo dB
     
     // Crear paths para áreas rellenas
     juce::Path inputAreaPath;
     juce::Path processedAreaPath;   // Salida procesada
     
-    // NUEVO: Línea base en el centro para señal bipolar
-    const float baseLine = bounds.getCentreY();
+    // ELIMINADO: baseLine ya no utilizada con nueva visualización
+    // const float baseLine = bounds.getCentreY();
     
-    // Colectar todos los puntos primero para suavizado
-    std::vector<juce::Point<float>> inputPoints;
-    std::vector<juce::Point<float>> processedPoints;    // Salida procesada
+    // RESTAURADO: Colectar puntos para visualización (lógica temporal original)
+    std::vector<juce::Point<float>> processedPoints;    // Puntos principales de la waveform
     
-    // Mostrar los últimos 'displayPoints' valores del buffer circular con menos delay
+    // Mostrar los últimos 'displayPoints' valores del buffer circular con lógica temporal original
     for (int i = 0; i < displayPoints; ++i)
     {
-        // Leer con offset mínimo para entrada instantánea
+        // RESTAURADO: Lógica temporal original que funcionaba
         int samplesBack = displayPoints - i + 5;  // Offset mínimo para sincronía audio-visual
         int bufferIndex = (readIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
         
-        // NUEVO: Leer valores bipolares directos (no dB)
-        float inputSample = inputWaveformBuffer[bufferIndex];      // Entrada (será 0 ahora)
-        float processedSample = processedWaveformBuffer[bufferIndex]; // Salida procesada bipolar [-1, 1]
+        // Leer valor bipolar principal
+        float processedSample = processedWaveformBuffer[bufferIndex];
+        
+        // NUEVO: Detección de picos micro-local (analizar 3 muestras adyacentes)
+        float localMax = processedSample;
+        float localMin = processedSample;
+        
+        // Analizar muestra anterior y siguiente para detectar picos locales
+        for (int offset = -1; offset <= 1; ++offset)
+        {
+            if (offset == 0) continue; // Ya tenemos la muestra central
+            
+            int adjacentIndex = (bufferIndex + offset + waveformBufferSize) % waveformBufferSize;
+            float adjacentSample = processedWaveformBuffer[adjacentIndex];
+            
+            if (adjacentSample > localMax) localMax = adjacentSample;
+            if (adjacentSample < localMin) localMin = adjacentSample;
+        }
+        
+        // Decidir qué valor usar: si hay diferencia significativa, usar el extremo más prominente
+        float finalSample = processedSample; // Por defecto usar muestra central
+        float peakDifference = std::abs(localMax - processedSample);
+        float valleyDifference = std::abs(localMin - processedSample);
+        
+        if (peakDifference > 0.05f || valleyDifference > 0.05f) // Umbral de significancia
+        {
+            // Usar el extremo más prominente
+            finalSample = (peakDifference > valleyDifference) ? localMax : localMin;
+        }
         
         // Calcular posición X - usar todo el ancho disponible
         float normalizedTime = float(i) / float(displayPoints - 1);
         float x = bounds.getX() + normalizedTime * bounds.getWidth();
         
-        // NUEVO: Mapeo bipolar - 0 en el centro, [-1,1] → [bottom, top]
+        // Mapeo bipolar - 0 en el centro, con amplificación visual en zoom x2
         float topOffset = 5.0f; // Margen desde bordes
-        float inputY = juce::jmap(inputSample, -1.0f, 1.0f, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
-        float processedY = juce::jmap(processedSample, -1.0f, 1.0f, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
+        float visualRange = (currentZoom == ZoomLevel::Zoomed) ? 0.5f : 1.0f; // x2 amplificación en zoom
+        float y = juce::jmap(finalSample, -visualRange, visualRange, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
         
         // Limitar valores a los bounds para evitar artefactos
-        inputY = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, inputY);
-        processedY = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, processedY);
+        y = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, y);
         
-        inputPoints.push_back({x, inputY});
-        processedPoints.push_back({x, processedY});
+        processedPoints.push_back({x, y});
     }
     
-    // Crear path suavizado para salida procesada
+    // NUEVO: Dibujar waveform mejorada con detección de picos micro-local
     if (!processedPoints.empty())
-    {
-        processedAreaPath.startNewSubPath(processedPoints[0].x, baseLine);
-        processedAreaPath.lineTo(processedPoints[0]);
-        
-        // Interpolación lineal simple para evitar artefactos
-        for (size_t i = 1; i < processedPoints.size(); ++i)
-        {
-            processedAreaPath.lineTo(processedPoints[i]);
-        }
-        
-        processedAreaPath.lineTo(processedPoints.back().x, baseLine);
-        processedAreaPath.closeSubPath();
-    }
-    
-    // ELIMINADO: Ya no crear path de entrada
-    
-    // Dibujar sin máscara para usar todo el ancho
-    
-    // ELIMINADO: Ya no dibujar entrada, solo salida procesada bipolar
-    
-    // 2. DESPUÉS dibujar área de SALIDA PROCESADA (ENCIMA) - Usando gradiente del medidor de salida
-    // CORRECCIÓN: processedAreaPath es realmente para salida procesada  
-    if (!processedAreaPath.isEmpty())
     {
         // COLORES NEUTROS: Gradiente gris-blanco para mejor visibilidad
         const juce::Colour lightGrey = DarkTheme::textPrimary;        // Blanco
         const juce::Colour mediumGrey = DarkTheme::textSecondary;     // Gris claro
-        const juce::Colour darkGrey = DarkTheme::textMuted;           // Gris oscuro
         
-        // Crear gradiente neutro con mayor opacidad para visibilidad
-        auto outputGradient = juce::ColourGradient(
-            lightGrey.withAlpha(0.8f * currentFadeOutFactor), bounds.getCentreX(), bounds.getY(),
-            darkGrey.withAlpha(0.6f * currentFadeOutFactor), bounds.getCentreX(), bounds.getBottom(),
-            false
-        );
-        outputGradient.addColour(0.15, lightGrey.withAlpha(0.75f * currentFadeOutFactor));
-        outputGradient.addColour(0.4, mediumGrey.withAlpha(0.7f * currentFadeOutFactor));
-        outputGradient.addColour(0.65, mediumGrey.withAlpha(0.65f * currentFadeOutFactor));
-        outputGradient.addColour(0.85, darkGrey.withAlpha(0.6f * currentFadeOutFactor));
+        // 1. Crear área rellena sutil desde línea central
+        const float centerY = bounds.getCentreY();
+        juce::Path waveformArea;
+        waveformArea.startNewSubPath(processedPoints[0].x, centerY);
+        waveformArea.lineTo(processedPoints[0]);
         
-        g.setGradientFill(outputGradient);
-        g.fillPath(processedAreaPath);
-        
-        // Línea superior con color gris-blanco para SALIDA PROCESADA
-        g.setColour(lightGrey.withAlpha(0.95f * currentFadeOutFactor));
-        juce::Path processedLine;
-        if (!processedPoints.empty())
+        // Conectar todos los puntos
+        for (size_t i = 1; i < processedPoints.size(); ++i)
         {
-            processedLine.startNewSubPath(processedPoints[0]);
-            for (size_t i = 1; i < processedPoints.size(); ++i)
-            {
-                processedLine.lineTo(processedPoints[i]);
-            }
-            g.strokePath(processedLine, juce::PathStrokeType(1.0f));  // Línea más delgada para salida
+            waveformArea.lineTo(processedPoints[i]);
         }
+        
+        // Cerrar área volviendo al centro
+        waveformArea.lineTo(processedPoints.back().x, centerY);
+        waveformArea.closeSubPath();
+        
+        // Dibujar área rellena muy sutil (reducida aún más para mayor difuminado)
+        g.setColour(lightGrey.withAlpha(0.05f * currentFadeOutFactor));
+        g.fillPath(waveformArea);
+        
+        // 2. Dibujar línea continua con efecto difuminado (multicapa)
+        juce::Path waveformLine;
+        waveformLine.startNewSubPath(processedPoints[0]);
+        for (size_t i = 1; i < processedPoints.size(); ++i)
+        {
+            waveformLine.lineTo(processedPoints[i]);
+        }
+        
+        // Capa base: más gruesa y muy difusa (efecto blur manual aumentado)
+        g.setColour(lightGrey.withAlpha(0.12f * currentFadeOutFactor));
+        g.strokePath(waveformLine, juce::PathStrokeType(4.0f, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+        
+        // Capa superior: línea principal aún más sutil (reducida de 0.3f a 0.22f)
+        g.setColour(lightGrey.withAlpha(0.22f * currentFadeOutFactor));
+        g.strokePath(waveformLine, juce::PathStrokeType(1.5f, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+        
+        // 3. Dibujar línea de referencia central (cero)
+        g.setColour(mediumGrey.withAlpha(0.3f * currentFadeOutFactor));
+        g.drawHorizontalLine(static_cast<int>(centerY), bounds.getX(), bounds.getRight());
     }
     
 }
@@ -1448,8 +1486,9 @@ void TransferFunctionDisplay::drawAttackSustainHistograms(juce::Graphics& g, juc
             int readIndex = (currentIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
             const float attackSample = attackGainBuffer[readIndex];
             
-            // Mapeo bipolar: -1.0 a +1.0 → bottom a top
-            const float yPos = juce::jmap(attackSample, -1.0f, 1.0f, 
+            // Mapeo bipolar con amplificación visual en zoom x2
+            float visualRange = (currentZoom == ZoomLevel::Zoomed) ? 0.5f : 1.0f; // x2 amplificación en zoom
+            const float yPos = juce::jmap(attackSample, -visualRange, visualRange, 
                                         bounds.getBottom() - topOffset, 
                                         bounds.getY() + topOffset);
             const float xPos = bounds.getX() + i * widthStep;
@@ -1462,7 +1501,7 @@ void TransferFunctionDisplay::drawAttackSustainHistograms(juce::Graphics& g, juc
             }
         }
         
-        // Dibujar histograma Attack con transparencia
+        // Dibujar histograma Attack con transparencia (NARANJA)
         g.setColour(DarkTheme::accentWarm.withAlpha(0.6f * currentFadeOutFactor));
         g.strokePath(attackHistogram, juce::PathStrokeType(1.5f));
     }
@@ -1478,8 +1517,9 @@ void TransferFunctionDisplay::drawAttackSustainHistograms(juce::Graphics& g, juc
             int readIndex = (currentIndex - samplesBack + waveformBufferSize) % waveformBufferSize;
             const float sustainSample = sustainGainBuffer[readIndex];
             
-            // Mapeo bipolar: -1.0 a +1.0 → bottom a top
-            const float yPos = juce::jmap(sustainSample, -1.0f, 1.0f, 
+            // Mapeo bipolar con amplificación visual en zoom x2
+            float visualRange = (currentZoom == ZoomLevel::Zoomed) ? 0.5f : 1.0f; // x2 amplificación en zoom
+            const float yPos = juce::jmap(sustainSample, -visualRange, visualRange, 
                                         bounds.getBottom() - topOffset, 
                                         bounds.getY() + topOffset);
             const float xPos = bounds.getX() + i * widthStep;
