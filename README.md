@@ -1,6 +1,7 @@
+
 ![JCBTransient Interface](Assets/screenshot.png)
 
-Plugin expansor de audio desarrollado en gen~, exportado con [gen~ Plugin Export](https://github.com/Cycling74/gen-plugin-export) y finalizado con el framework C++ [JUCE](https://github.com/juce-framework/JUCE). Este plugin forma parte de un conjunto de herramientas didácticas que utilizo en la asignatura de Técnicas de Grabación y Masterización para Música Electroacústica del [MCE](https://katarinagurska.com/curso-of/master-de-composicion-electroacustica-mce/). Originalmente creado con JUCE 6 hace unos años, el proyecto ha evolucionado significativamente en su interfaz gráfica y funcionalidad gracias al desarrollo con Claude Code durante junio de 2025. Para más detalles técnicos, consulta [NOTAS.md](NOTAS.md).
+Plugin de diseño de transitorios desarrollado en gen~, exportado con [gen~ Plugin Export](https://github.com/Cycling74/gen-plugin-export) y finalizado con el framework C++ [JUCE](https://github.com/juce-framework/JUCE). Este plugin forma parte de un conjunto de herramientas didácticas que utilizo en la asignatura de Técnicas de Grabación y Masterización para Música Electroacústica del [MCE](https://katarinagurska.com/curso-of/master-de-composicion-electroacustica-mce/). Originalmente creado con JUCE 6 hace unos años, el proyecto ha evolucionado significativamente en su interfaz gráfica y funcionalidad gracias al desarrollo con Claude Code durante junio de 2025. Para más detalles técnicos, consulta [NOTAS.md](NOTAS.md).
 
 ## Instalación macOS
 1. Descarga el archivo DMG desde la página de [Releases](https://github.com/cjitter/JCBTransient/releases)
@@ -61,23 +62,24 @@ cmake --build build-release   # Para Release
 
 ## Características principales
 
-- **Ajuste de entrada** (trim ±12 dB) para ambas cadenas de audio y sidechain.
-- **Procesamiento sidechain** interno y externo con filtros paso alto y bajo, 2º orden (12/24 dB/oct).
-- **Modo de detección** sharp con sliding RMS de ventana variable y control adicional de suavizado.
-- **Ajuste interpolado independiente de reacción pico/RMS**.
-- **Expansión con softknee** de segundo orden con transición gradual (1:1 a 6:1).
-- **Controles estándar**:
-- **Modo Delta para monitorización** de la señal diferencia (entrada vs salida).
-- **Softclipping asimétrico**, aplicado tras expansión y makeup gain.
-- **Control Dry/Wet (0 a 100%)** para mezcla de señal procesada.
-- **Procesamiento mono, mono-estéreo y estéreo**, con detección de envolvente compartida.
-- **Sistema lookahead** (0 a 10 ms) para procesamiento predictivo.
-- **Visualización gráfica**: medidores de entrada, salida y reducción de ganancia.
-- **Gestión de presets** (usuario y fábrica).
-- **Monitorización**: solo sidechain y delta.
-- **Bypass interno**, independiente del DAW.
-- **Formatos disponibles**: VST3, AU y AAX.
-- **Visualización del diagrama de bloques**: Acceso al diagrama completo del expansor con posibilidad de explorar cada bloque y copiar el código GenExpr para usar directamente en objetos Codebox o gen.codebox~ (Max 9).
+- **Diseñador de transitorios** con control independiente de ataque y sustain, ambos en ±18 dB.
+- **Control de sensibilidad** (0–100%) para la detección de transitorios.
+- **Modo Delta activable** para escuchar únicamente la diferencia entre señal procesada y original (ganancia/reducción aplicada).
+- **Delta Mode (TRANS/SUST)**: selecciona qué parte del procesamiento (ataque o sustain) se escucha en modo Delta. Este modo se activa solo cuando Delta está ON.
+- **Parámetro Delta automatizable**, guardado en presets (no es un parámetro global).
+- **Envolvente configurable** con parámetros de ataque, hold, release y suavizado.
+- **Filtro sidechain** interno y externo con HPF y LPF variables (20 Hz – 20 kHz).
+- **Control de entrada y salida** (trim y makeup) ±12 dB.
+- **Modo lookahead** de 0 a 10 ms para evitar overshooting.
+- **Softclip de salida** con distorsión armónica suave.
+- **Mezcla Dry/Wet** de 0 a 100% entre señal original y procesada.
+- **Procesamiento exclusivamente estéreo**, con canales siempre vinculados.
+- **Visualización gráfica** en tiempo real: envolventes de entrada/salida e histograma de procesamiento.
+- **Gestión completa de presets** con funciones de guardar, guardar como, eliminar, y navegación.
+- **Monitor solo sidechain**, y escucha directa del filtrado sidechain.
+- **Bypass interno**, no automatizable, con transición suave.
+- **Cambio de idioma** dinámico para tooltips (Español/Inglés).
+- **Visualización del diagrama de bloques** con acceso directo al código GenExpr por sección.
 
 ![Diagrama de Bloques](Assets/screenshotDiagram.png)
 
