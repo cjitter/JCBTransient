@@ -134,7 +134,8 @@ juce_add_binary_data(JCBTransient_BinaryData
         Assets/code/GainCalc.txt
         Assets/code/Output.txt
         # Presets de fábrica
-        Assets/FactoryPresets/LoopRedux.preset
+        Assets/FactoryPresets/Sustainer.preset
+        Assets/FactoryPresets/Ataquer.preset
 )
 
 # Linkear binary data al plugin
