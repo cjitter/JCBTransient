@@ -129,7 +129,7 @@ private:
         juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override
         {
             // Coincidir con estilo de etiqueta de knob: tamaño dinámico basado en altura del botón + negrita
-            float fontSize = static_cast<float>(buttonHeight) * 0.6f;
+            float fontSize = static_cast<float>(buttonHeight) * 0.5f;
             return juce::Font(juce::FontOptions(fontSize)).withStyle(juce::Font::bold);
         }
     };
@@ -206,6 +206,7 @@ private:
         CustomSlider attackSlider{"tran"};
         CustomSlider sustainSlider{"sust"};
         CustomSlider sensSlider{"sens"};
+        juce::TextButton flipButton{"FLIP"};   // Intercambia valores TRANS/SUST
         
         std::unique_ptr<CustomSliderAttachment> attackAttachment;
         std::unique_ptr<CustomSliderAttachment> sustainAttachment;
@@ -798,6 +799,7 @@ private:
     // MÉTODOS DE SETUP
     //==========================================================================
     void setupKnobs();
+    void setupButtons();  // Nuevo método para botones FLIP y LINK
     void setupMeters();
     void setupSidechainControls();
     void setupPresetArea();

@@ -104,9 +104,9 @@ typedef struct State {
 	t_sample m_z_SMOOTH_90;
 	t_sample m_j_HPF_89;
 	t_sample m_j_HPFORDER_88;
-	t_sample m_f_HOLD_92;
+	t_sample m_e_REL_92;
 	t_sample m_d_ATK_94;
-	t_sample m_e_REL_93;
+	t_sample m_f_HOLD_93;
 	t_sample m_c_SUSTAIN_GAIN_96;
 	t_sample m_q_SENSITIVITY_95;
 	t_sample m_envelopeHistory_75;
@@ -265,8 +265,8 @@ typedef struct State {
 		m_j_HPF_89 = 20;
 		m_z_SMOOTH_90 = 0;
 		m_i_MAKEUP_91 = 0;
-		m_f_HOLD_92 = 0;
-		m_e_REL_93 = 60;
+		m_e_REL_92 = 60;
+		m_f_HOLD_93 = 0;
 		m_d_ATK_94 = 1;
 		m_q_SENSITIVITY_95 = 0.5;
 		m_c_SUSTAIN_GAIN_96 = 0;
@@ -340,9 +340,9 @@ typedef struct State {
 			t_sample smoothAmountHistoryNext = fixdenorm(smoothSmoothAmount);
 			t_sample smoothAttack = ((m_atkHistory_52 * ((t_sample)0.999)) + (m_d_ATK_94 * ((t_sample)0.001)));
 			t_sample atkHistoryNext = fixdenorm(smoothAttack);
-			t_sample smoothRelease = ((m_relHistory_51 * ((t_sample)0.999)) + (m_e_REL_93 * ((t_sample)0.001)));
+			t_sample smoothRelease = ((m_relHistory_51 * ((t_sample)0.999)) + (m_e_REL_92 * ((t_sample)0.001)));
 			t_sample relHistoryNext = fixdenorm(smoothRelease);
-			t_sample smoothHold = ((m_holdHistory_50 * ((t_sample)0.999)) + (m_f_HOLD_92 * ((t_sample)0.001)));
+			t_sample smoothHold = ((m_holdHistory_50 * ((t_sample)0.999)) + (m_f_HOLD_93 * ((t_sample)0.001)));
 			t_sample holdHistoryNext = fixdenorm(smoothHold);
 			t_sample smoothHpfFreq = ((m_hpfFreqHistory_56 * ((t_sample)0.999)) + (m_j_HPF_89 * ((t_sample)0.001)));
 			t_sample hpfFreqHistoryNext = fixdenorm(smoothHpfFreq);
@@ -371,7 +371,7 @@ typedef struct State {
 			t_sample keyMixHistoryNext = fixdenorm(smoothKeyMix);
 			t_sample smoothDryWetMix = ((m_dryWetMixHistory_62 * ((t_sample)0.999)) + (m_o_DRYWET_81 * ((t_sample)0.001)));
 			t_sample dryWetMixHistoryNext = fixdenorm(smoothDryWetMix);
-			t_sample mix_3647 = (smoothDryWetMix + (smoothDeltaMode * (((int)1) - smoothDryWetMix)));
+			t_sample mix_3814 = (smoothDryWetMix + (smoothDeltaMode * (((int)1) - smoothDryWetMix)));
 			t_sample smoothTrimGain = ((m_trimHistory_61 * ((t_sample)0.999)) + (m_a_TRIM_98 * ((t_sample)0.001)));
 			t_sample trimHistoryNext = fixdenorm(smoothTrimGain);
 			t_sample trimGainLinear = dbtoa(smoothTrimGain);
@@ -388,11 +388,11 @@ typedef struct State {
 			t_sample sidechainTrimReference = sidechainTrimGainLinear;
 			t_sample leftSidechainTrimmed = (in3 * sidechainTrimReference);
 			t_sample rightSidechainTrimmed = (in4 * sidechainTrimReference);
-			t_sample expr_3566 = leftSidechainTrimmed;
-			t_sample expr_3567 = rightSidechainTrimmed;
+			t_sample expr_3733 = leftSidechainTrimmed;
+			t_sample expr_3734 = rightSidechainTrimmed;
 			t_sample sidechainSignalMono = ((rightSidechainTrimmed + leftSidechainTrimmed) * ((t_sample)0.707));
-			t_sample mix_3648 = (mainSignalMono + (smoothKeyMix * (sidechainSignalMono - mainSignalMono)));
-			t_sample keyMixedSignal = mix_3648;
+			t_sample mix_3815 = (mainSignalMono + (smoothKeyMix * (sidechainSignalMono - mainSignalMono)));
+			t_sample keyMixedSignal = mix_3815;
 			t_sample ONSIDECHAIN = smoothScEnable;
 			t_sample lpfFinalSignal = ((int)0);
 			t_sample hpfFinalSignal = ((int)0);
@@ -472,8 +472,8 @@ typedef struct State {
 				lpfFinalSignal = lpfStage2FilteredSignal;
 				
 			};
-			t_sample mix_3649 = (sidechainMixedSignal + (ONSIDECHAIN * (lpfFinalSignal - sidechainMixedSignal)));
-			t_sample lpfMixedSignal = mix_3649;
+			t_sample mix_3816 = (sidechainMixedSignal + (ONSIDECHAIN * (lpfFinalSignal - sidechainMixedSignal)));
+			t_sample lpfMixedSignal = mix_3816;
 			t_sample hpfInput = (lpfMixedSignal * hpfCoeffA2);
 			t_sample hpfFromHistory1 = (m_hpfHistory_39 * hpfCoeffA1);
 			t_sample hpfFromHistory2 = (m_hpfHistory_40 * hpfCoeffA0);
@@ -521,8 +521,8 @@ typedef struct State {
 				hpfFinalSignal = hpfStage2FilteredSignal;
 				
 			};
-			t_sample mix_3650 = (lpfMixedSignal + (ONSIDECHAIN * (hpfFinalSignal - lpfMixedSignal)));
-			t_sample sidechainProcessedSignal = mix_3650;
+			t_sample mix_3817 = (lpfMixedSignal + (ONSIDECHAIN * (hpfFinalSignal - lpfMixedSignal)));
+			t_sample sidechainProcessedSignal = mix_3817;
 			t_sample sidechainDetectionSignal = sidechainProcessedSignal;
 			t_sample attack_ms = ((((t_sample)0.05) < smoothAttack) ? smoothAttack : ((t_sample)0.05));
 			t_sample release_ms = ((((t_sample)0.1) < smoothRelease) ? smoothRelease : ((t_sample)0.1));
@@ -536,15 +536,15 @@ typedef struct State {
 			t_sample attack_env_sharp = ((int)0);
 			t_sample sharpEnvelopeFinal = ((int)0);
 			t_sample hold_samples = (smoothHold * (samplerate * 0.001));
-			t_sample envelope_delta_3547 = fabs((m_peakEnvSharp_9 - m_releaseHistSharp_8));
-			t_sample sub_3654 = (smoothSensitivity - ((int)0));
-			t_sample scale_3651 = ((safepow((sub_3654 * ((t_sample)1)), ((int)1)) * ((t_sample)0.49)) + ((t_sample)0.01));
-			t_sample sensitivity_scale_3548 = scale_3651;
-			t_sample sensitivity_threshold_3549 = sensitivity_scale_3548;
-			int cond_99 = (envelope_delta_3547 > sensitivity_threshold_3549);
-			int transient_detected_3550 = (cond_99 ? ((int)1) : ((int)0));
+			t_sample envelope_delta_3714 = fabs((m_peakEnvSharp_9 - m_releaseHistSharp_8));
+			t_sample sub_3821 = (smoothSensitivity - ((int)0));
+			t_sample scale_3818 = ((safepow((sub_3821 * ((t_sample)1)), ((int)1)) * ((t_sample)0.49)) + ((t_sample)0.01));
+			t_sample sensitivity_scale_3715 = scale_3818;
+			t_sample sensitivity_threshold_3716 = sensitivity_scale_3715;
+			int cond_99 = (envelope_delta_3714 > sensitivity_threshold_3716);
+			int transient_detected_3717 = (cond_99 ? ((int)1) : ((int)0));
 			t_sample holdCounterPlusEqualsNext = m_holdCounterPlusEquals_68;
-			if ((transient_detected_3550 > ((int)0))) {
+			if ((transient_detected_3717 > ((int)0))) {
 				holdCounterPlusEqualsNext = ((int)0);
 				
 			} else {
@@ -556,9 +556,9 @@ typedef struct State {
 			};
 			int cond_100 = (m_holdCounterPlusEquals_68 < hold_samples);
 			int still_in_hold = (cond_100 ? ((int)1) : ((int)0));
-			int cond_101 = (transient_detected_3550 || still_in_hold);
-			int gate_open_3551 = (cond_101 ? ((int)1) : ((int)0));
-			if ((gate_open_3551 > ((int)0))) {
+			int cond_101 = (transient_detected_3717 || still_in_hold);
+			int gate_open_3718 = (cond_101 ? ((int)1) : ((int)0));
+			if ((gate_open_3718 > ((int)0))) {
 				release_env = (m_releaseHistSharp_8 * release_coeff_modified);
 				env_post_release = ((m_peakEnvSharp_9 < release_env) ? release_env : m_peakEnvSharp_9);
 				attack_env_sharp = (m_attackHistSharp_7 * attack_coeff_modified);
@@ -568,16 +568,16 @@ typedef struct State {
 				sharpEnvelopeFinal = (m_attackHistSharp_7 * release_coeff_modified);
 				
 			};
-			t_sample sharpEnvelopeFinal_3552 = ((sharpEnvelopeFinal < ((t_sample)1e-06)) ? ((t_sample)1e-06) : sharpEnvelopeFinal);
+			t_sample sharpEnvelopeFinal_3719 = ((sharpEnvelopeFinal < ((t_sample)1e-06)) ? ((t_sample)1e-06) : sharpEnvelopeFinal);
 			m_releaseHistSharp_8 = fixdenorm(env_post_release);
-			m_attackHistSharp_7 = fixdenorm(sharpEnvelopeFinal_3552);
+			m_attackHistSharp_7 = fixdenorm(sharpEnvelopeFinal_3719);
 			if ((m_z_SMOOTH_90 > ((t_sample)0.01))) {
 				t_sample smooth_coeff = (m_z_SMOOTH_90 * ((t_sample)0.99));
-				sharpEnvelopeFinal_3552 = ((m_smoothFilterHistory_1 * smooth_coeff) + (sharpEnvelopeFinal_3552 * (((int)1) - smooth_coeff)));
+				sharpEnvelopeFinal_3719 = ((m_smoothFilterHistory_1 * smooth_coeff) + (sharpEnvelopeFinal_3719 * (((int)1) - smooth_coeff)));
 				
 			};
-			t_sample smoothFilterHistoryNext = sharpEnvelopeFinal_3552;
-			int attack_env = gate_open_3551;
+			t_sample smoothFilterHistoryNext = sharpEnvelopeFinal_3719;
+			int attack_env = gate_open_3718;
 			t_sample attack_env_smooth = ((int)0);
 			t_sample maxb_102 = (smoothAttack * ((t_sample)0.1));
 			t_sample detection_attack_coeff = exp(safediv(((int)-1), (((((((t_sample)0.5) < maxb_102) ? maxb_102 : ((t_sample)0.5)) * samplerate) * ((t_sample)0.001)) * smo_factor)));
@@ -591,53 +591,53 @@ typedef struct State {
 				
 			};
 			t_sample transientSmoothHistoryNext = fixdenorm(attack_env_smooth);
-			t_sample attack_env_3553 = ((((int)1) < attack_env_smooth) ? ((int)1) : attack_env_smooth);
-			t_sample mina_104 = (attack_env_3553 * ((t_sample)1.5));
+			t_sample attack_env_3720 = ((((int)1) < attack_env_smooth) ? ((int)1) : attack_env_smooth);
+			t_sample mina_104 = (attack_env_3720 * ((t_sample)1.5));
 			t_sample sustain_env = (((int)1) - safepow(((((int)1) < mina_104) ? ((int)1) : mina_104), ((t_sample)0.7)));
 			t_sample trimCompensationFactor = safediv(((int)1), trimGainLinear);
 			t_sample sidechainTrimCompensated = (sidechainDetectionSignal * trimCompensationFactor);
 			t_sample attack_factor = safepow(dbtoa(smoothAttackGain), ((t_sample)0.8));
 			t_sample sustain_factor = safepow(dbtoa(smoothSustainGain), ((t_sample)0.8));
-			t_sample mul_3656 = (attack_env_3553 * smoothSensitivity);
-			t_sample mix_3655 = (((int)1) + (mul_3656 * (attack_factor - ((int)1))));
-			t_sample mul_3658 = (sustain_env * smoothSensitivity);
-			t_sample mix_3657 = (((int)1) + (mul_3658 * (sustain_factor - ((int)1))));
-			t_sample gain_total = (mix_3655 * mix_3657);
+			t_sample mul_3823 = (attack_env_3720 * smoothSensitivity);
+			t_sample mix_3822 = (((int)1) + (mul_3823 * (attack_factor - ((int)1))));
+			t_sample mul_3825 = (sustain_env * smoothSensitivity);
+			t_sample mix_3824 = (((int)1) + (mul_3825 * (sustain_factor - ((int)1))));
+			t_sample gain_total = (mix_3822 * mix_3824);
 			t_sample maxb_105 = ((gain_total < ((int)10)) ? gain_total : ((int)10));
-			t_sample gain_total_3554 = ((((t_sample)0.1) < maxb_105) ? maxb_105 : ((t_sample)0.1));
-			t_sample expandedLeft = (leftDelayedForCompression * gain_total_3554);
+			t_sample gain_total_3721 = ((((t_sample)0.1) < maxb_105) ? maxb_105 : ((t_sample)0.1));
+			t_sample expandedLeft = (leftDelayedForCompression * gain_total_3721);
 			t_sample delta_control = ((smoothDeltaMode <= ((int)0)) ? ((int)0) : ((smoothDeltaMode >= ((int)1)) ? ((int)1) : smoothDeltaMode));
 			t_sample delta_signal = ((int)0);
 			if ((delta_control > ((t_sample)0.01))) {
 				t_sample delta_mode = smoothRange;
-				t_sample mul_3660 = (attack_env_3553 * smoothSensitivity);
-				t_sample mix_3659 = (((int)1) + (mul_3660 * (attack_factor - ((int)1))));
-				t_sample delta_attack_only = ((leftDelayedForCompression * mix_3659) - leftDelayedForCompression);
-				t_sample mul_3662 = (sustain_env * smoothSensitivity);
-				t_sample mix_3661 = (((int)1) + (mul_3662 * (sustain_factor - ((int)1))));
-				t_sample delta_sustain_only = ((leftDelayedForCompression * mix_3661) - leftDelayedForCompression);
+				t_sample mul_3827 = (attack_env_3720 * smoothSensitivity);
+				t_sample mix_3826 = (((int)1) + (mul_3827 * (attack_factor - ((int)1))));
+				t_sample delta_attack_only = ((leftDelayedForCompression * mix_3826) - leftDelayedForCompression);
+				t_sample mul_3829 = (sustain_env * smoothSensitivity);
+				t_sample mix_3828 = (((int)1) + (mul_3829 * (sustain_factor - ((int)1))));
+				t_sample delta_sustain_only = ((leftDelayedForCompression * mix_3828) - leftDelayedForCompression);
 				t_sample delta_both = (expandedLeft - leftDelayedForCompression);
 				if ((delta_mode <= ((int)1))) {
-					t_sample mix_3663 = (delta_attack_only + (delta_mode * (delta_both - delta_attack_only)));
-					delta_signal = mix_3663;
+					t_sample mix_3830 = (delta_attack_only + (delta_mode * (delta_both - delta_attack_only)));
+					delta_signal = mix_3830;
 					
 				} else {
 					delta_mode = (delta_mode - ((int)1));
-					t_sample mix_3664 = (delta_both + (delta_mode * (delta_sustain_only - delta_both)));
-					delta_signal = mix_3664;
+					t_sample mix_3831 = (delta_both + (delta_mode * (delta_sustain_only - delta_both)));
+					delta_signal = mix_3831;
 					
 				};
 				
 			};
-			t_sample mix_3665 = (expandedLeft + (delta_control * (delta_signal - expandedLeft)));
+			t_sample mix_3832 = (expandedLeft + (delta_control * (delta_signal - expandedLeft)));
 			t_sample reduction_smooth_mul = (m_reductionHistLeft_6 * ((t_sample)0.999));
 			t_sample reduction_smoothed = (((int)0) + reduction_smooth_mul);
 			t_sample makeup_linear = dbtoa(smoothMakeupGain);
-			t_sample leftWithMakeup = (mix_3665 * makeup_linear);
+			t_sample leftWithMakeup = (mix_3832 * makeup_linear);
 			m_reductionHistLeft_6 = fixdenorm(reduction_smoothed);
-			t_sample mix_3666 = (leftDelayedForMixing + (mix_3647 * (leftWithMakeup - leftDelayedForMixing)));
-			t_sample mix_3667 = (mix_3666 + (smoothSoloSidechain * (sidechainDelayedWrite - mix_3666)));
-			t_sample leftWithSidechain = mix_3667;
+			t_sample mix_3833 = (leftDelayedForMixing + (mix_3814 * (leftWithMakeup - leftDelayedForMixing)));
+			t_sample mix_3834 = (mix_3833 + (smoothSoloSidechain * (sidechainDelayedWrite - mix_3833)));
+			t_sample leftWithSidechain = mix_3834;
 			t_sample saturationAmount = ((smoothSoftclip <= ((int)0)) ? ((int)0) : ((smoothSoftclip >= ((int)1)) ? ((int)1) : smoothSoftclip));
 			t_sample leftSaturated = ((int)0);
 			if ((leftWithSidechain > ((int)0))) {
@@ -647,42 +647,42 @@ typedef struct State {
 				leftSaturated = (tanh((leftWithSidechain * ((t_sample)0.8))) * ((t_sample)1.25));
 				
 			};
-			t_sample leftSaturated_3555 = ((leftSaturated <= ((t_sample)-0.989)) ? ((t_sample)-0.989) : ((leftSaturated >= ((t_sample)0.989)) ? ((t_sample)0.989) : leftSaturated));
-			t_sample mix_3668 = (leftWithSidechain + (saturationAmount * (leftSaturated_3555 - leftWithSidechain)));
-			t_sample mix_3669 = (leftDelayedForMixing + (smoothBypassAmount * (mix_3668 - leftDelayedForMixing)));
-			t_sample expandedRight = (rightDelayedForCompression * gain_total_3554);
+			t_sample leftSaturated_3722 = ((leftSaturated <= ((t_sample)-0.989)) ? ((t_sample)-0.989) : ((leftSaturated >= ((t_sample)0.989)) ? ((t_sample)0.989) : leftSaturated));
+			t_sample mix_3835 = (leftWithSidechain + (saturationAmount * (leftSaturated_3722 - leftWithSidechain)));
+			t_sample mix_3836 = (leftDelayedForMixing + (smoothBypassAmount * (mix_3835 - leftDelayedForMixing)));
+			t_sample expandedRight = (rightDelayedForCompression * gain_total_3721);
 			t_sample rightDeltaControl = ((smoothDeltaMode <= ((int)0)) ? ((int)0) : ((smoothDeltaMode >= ((int)1)) ? ((int)1) : smoothDeltaMode));
 			t_sample rightDeltaSignal = ((int)0);
 			if ((rightDeltaControl > ((t_sample)0.01))) {
 				t_sample right_delta_mode = smoothRange;
-				t_sample mul_3671 = (attack_env_3553 * smoothSensitivity);
-				t_sample mix_3670 = (((int)1) + (mul_3671 * (attack_factor - ((int)1))));
-				t_sample right_delta_attack_only = ((rightDelayedForCompression * mix_3670) - rightDelayedForCompression);
-				t_sample mul_3673 = (sustain_env * smoothSensitivity);
-				t_sample mix_3672 = (((int)1) + (mul_3673 * (sustain_factor - ((int)1))));
-				t_sample right_delta_sustain_only = ((rightDelayedForCompression * mix_3672) - rightDelayedForCompression);
+				t_sample mul_3838 = (attack_env_3720 * smoothSensitivity);
+				t_sample mix_3837 = (((int)1) + (mul_3838 * (attack_factor - ((int)1))));
+				t_sample right_delta_attack_only = ((rightDelayedForCompression * mix_3837) - rightDelayedForCompression);
+				t_sample mul_3840 = (sustain_env * smoothSensitivity);
+				t_sample mix_3839 = (((int)1) + (mul_3840 * (sustain_factor - ((int)1))));
+				t_sample right_delta_sustain_only = ((rightDelayedForCompression * mix_3839) - rightDelayedForCompression);
 				t_sample right_delta_both = (expandedRight - rightDelayedForCompression);
 				if ((right_delta_mode <= ((int)1))) {
-					t_sample mix_3674 = (right_delta_attack_only + (right_delta_mode * (right_delta_both - right_delta_attack_only)));
-					rightDeltaSignal = mix_3674;
+					t_sample mix_3841 = (right_delta_attack_only + (right_delta_mode * (right_delta_both - right_delta_attack_only)));
+					rightDeltaSignal = mix_3841;
 					
 				} else {
 					right_delta_mode = (right_delta_mode - ((int)1));
-					t_sample mix_3675 = (right_delta_both + (right_delta_mode * (right_delta_sustain_only - right_delta_both)));
-					rightDeltaSignal = mix_3675;
+					t_sample mix_3842 = (right_delta_both + (right_delta_mode * (right_delta_sustain_only - right_delta_both)));
+					rightDeltaSignal = mix_3842;
 					
 				};
 				
 			};
-			t_sample mix_3676 = (expandedRight + (rightDeltaControl * (rightDeltaSignal - expandedRight)));
+			t_sample mix_3843 = (expandedRight + (rightDeltaControl * (rightDeltaSignal - expandedRight)));
 			t_sample rightReductionSmoothMul = (m_reductionHistRight_5 * ((t_sample)0.999));
 			t_sample rightReductionSmoothed = (((int)0) + rightReductionSmoothMul);
 			t_sample rightMakeupLinear = dbtoa(smoothMakeupGain);
-			t_sample rightWithMakeup = (mix_3676 * rightMakeupLinear);
+			t_sample rightWithMakeup = (mix_3843 * rightMakeupLinear);
 			m_reductionHistRight_5 = fixdenorm(rightReductionSmoothed);
-			t_sample mix_3677 = (rightDelayedForMixing + (mix_3647 * (rightWithMakeup - rightDelayedForMixing)));
-			t_sample mix_3678 = (mix_3677 + (smoothSoloSidechain * (sidechainDelayedTap - mix_3677)));
-			t_sample rightWithSidechain = mix_3678;
+			t_sample mix_3844 = (rightDelayedForMixing + (mix_3814 * (rightWithMakeup - rightDelayedForMixing)));
+			t_sample mix_3845 = (mix_3844 + (smoothSoloSidechain * (sidechainDelayedTap - mix_3844)));
+			t_sample rightWithSidechain = mix_3845;
 			t_sample rightSaturationAmount = ((smoothSoftclip <= ((int)0)) ? ((int)0) : ((smoothSoftclip >= ((int)1)) ? ((int)1) : smoothSoftclip));
 			t_sample rightSaturated = ((int)0);
 			if ((rightWithSidechain > ((int)0))) {
@@ -692,31 +692,31 @@ typedef struct State {
 				rightSaturated = (tanh((rightWithSidechain * ((t_sample)0.8))) * ((t_sample)1.25));
 				
 			};
-			t_sample rightSaturated_3557 = ((rightSaturated <= ((t_sample)-0.989)) ? ((t_sample)-0.989) : ((rightSaturated >= ((t_sample)0.989)) ? ((t_sample)0.989) : rightSaturated));
-			t_sample mix_3679 = (rightWithSidechain + (rightSaturationAmount * (rightSaturated_3557 - rightWithSidechain)));
-			t_sample mix_3680 = (rightDelayedForMixing + (smoothBypassAmount * (mix_3679 - rightDelayedForMixing)));
+			t_sample rightSaturated_3724 = ((rightSaturated <= ((t_sample)-0.989)) ? ((t_sample)-0.989) : ((rightSaturated >= ((t_sample)0.989)) ? ((t_sample)0.989) : rightSaturated));
+			t_sample mix_3846 = (rightWithSidechain + (rightSaturationAmount * (rightSaturated_3724 - rightWithSidechain)));
+			t_sample mix_3847 = (rightDelayedForMixing + (smoothBypassAmount * (mix_3846 - rightDelayedForMixing)));
 			t_sample attack_gain_db = ((int)0);
 			t_sample attack_meter_db = ((int)0);
 			t_sample sustain_gain_db = ((int)0);
 			t_sample sustain_meter_db = ((int)0);
-			if ((attack_env_3553 > ((t_sample)0.001))) {
-				attack_gain_db = atodb(mix_3655);
-				attack_meter_db = (attack_gain_db * attack_env_3553);
+			if ((attack_env_3720 > ((t_sample)0.001))) {
+				attack_gain_db = atodb(mix_3822);
+				attack_meter_db = (attack_gain_db * attack_env_3720);
 				
 			} else {
 				attack_meter_db = ((int)0);
 				
 			};
-			t_sample expr_3563 = (attack_meter_db * ((t_sample)0.055555555555556));
+			t_sample expr_3730 = (attack_meter_db * ((t_sample)0.055555555555556));
 			if ((sustain_env > ((t_sample)0.001))) {
-				sustain_gain_db = atodb(mix_3657);
+				sustain_gain_db = atodb(mix_3824);
 				sustain_meter_db = (sustain_gain_db * sustain_env);
 				
 			} else {
 				sustain_meter_db = ((int)0);
 				
 			};
-			t_sample expr_3568 = (sustain_meter_db * ((t_sample)0.055555555555556));
+			t_sample expr_3735 = (sustain_meter_db * ((t_sample)0.055555555555556));
 			m_deltaModeHistory_67 = deltaModeHistoryNext;
 			m_attackGainHistory_71 = attackGainHistoryNext;
 			m_sustainGainHistory_70 = sustainGainHistoryNext;
@@ -777,14 +777,14 @@ typedef struct State {
 			m_holdCounterPlusEquals_68 = holdCounterPlusEqualsNext;
 			m_sidechainWriteDelay_10.write(sidechainTrimCompensated);
 			m_sidechainTapDelay_11.write(sidechainTrimCompensated);
-			t_sample out8 = expr_3568;
-			t_sample out7 = expr_3567;
+			t_sample out8 = expr_3735;
+			t_sample out7 = expr_3734;
 			t_sample out5 = rightDelayedForCompression;
 			t_sample out4 = leftDelayedForCompression;
-			t_sample out6 = expr_3566;
-			t_sample out1 = mix_3669;
-			t_sample out2 = mix_3680;
-			t_sample out3 = expr_3563;
+			t_sample out6 = expr_3733;
+			t_sample out1 = mix_3836;
+			t_sample out2 = mix_3847;
+			t_sample out3 = expr_3730;
 			m_sidechainWriteDelay_10.step();
 			m_sidechainTapDelay_11.step();
 			m_rightInputDelay_12.step();
@@ -853,14 +853,14 @@ typedef struct State {
 	inline void set_i_MAKEUP(t_param _value) {
 		m_i_MAKEUP_91 = (_value < -12 ? -12 : (_value > 12 ? 12 : _value));
 	};
-	inline void set_f_HOLD(t_param _value) {
-		m_f_HOLD_92 = (_value < 0 ? 0 : (_value > 500 ? 500 : _value));
-	};
 	inline void set_e_REL(t_param _value) {
-		m_e_REL_93 = (_value < 0.1 ? 0.1 : (_value > 350 ? 350 : _value));
+		m_e_REL_92 = (_value < 0.1 ? 0.1 : (_value > 350 ? 350 : _value));
+	};
+	inline void set_f_HOLD(t_param _value) {
+		m_f_HOLD_93 = (_value < 0 ? 0 : (_value > 250 ? 250 : _value));
 	};
 	inline void set_d_ATK(t_param _value) {
-		m_d_ATK_94 = (_value < 0 ? 0 : (_value > 250 ? 250 : _value));
+		m_d_ATK_94 = (_value < 0 ? 0 : (_value > 150 ? 150 : _value));
 	};
 	inline void set_q_SENSITIVITY(t_param _value) {
 		m_q_SENSITIVITY_95 = (_value < 0 ? 0 : (_value > 1 ? 1 : _value));
@@ -952,8 +952,8 @@ void getparameter(CommonState *cself, long index, t_param *value) {
 		case 1: *value = self->m_b_ATTACK_GAIN_97; break;
 		case 2: *value = self->m_c_SUSTAIN_GAIN_96; break;
 		case 3: *value = self->m_d_ATK_94; break;
-		case 4: *value = self->m_e_REL_93; break;
-		case 5: *value = self->m_f_HOLD_92; break;
+		case 4: *value = self->m_e_REL_92; break;
+		case 5: *value = self->m_f_HOLD_93; break;
 		case 6: *value = self->m_h_DELTAMODE_79; break;
 		case 7: *value = self->m_i_MAKEUP_91; break;
 		case 8: *value = self->m_j_HPF_89; break;
@@ -1106,14 +1106,14 @@ void *create(t_param sr, long vs) {
 	pi->inputmax = 1;
 	pi->hasminmax = true;
 	pi->outputmin = 0;
-	pi->outputmax = 250;
+	pi->outputmax = 150;
 	pi->exp = 0;
 	pi->units = "";		// no units defined
-	// initialize parameter 4 ("m_e_REL_93")
+	// initialize parameter 4 ("m_e_REL_92")
 	pi = self->__commonstate.params + 4;
 	pi->name = "e_REL";
 	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_e_REL_93;
+	pi->defaultvalue = self->m_e_REL_92;
 	pi->defaultref = 0;
 	pi->hasinputminmax = false;
 	pi->inputmin = 0;
@@ -1123,18 +1123,18 @@ void *create(t_param sr, long vs) {
 	pi->outputmax = 350;
 	pi->exp = 0;
 	pi->units = "";		// no units defined
-	// initialize parameter 5 ("m_f_HOLD_92")
+	// initialize parameter 5 ("m_f_HOLD_93")
 	pi = self->__commonstate.params + 5;
 	pi->name = "f_HOLD";
 	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_f_HOLD_92;
+	pi->defaultvalue = self->m_f_HOLD_93;
 	pi->defaultref = 0;
 	pi->hasinputminmax = false;
 	pi->inputmin = 0;
 	pi->inputmax = 1;
 	pi->hasminmax = true;
 	pi->outputmin = 0;
-	pi->outputmax = 500;
+	pi->outputmax = 250;
 	pi->exp = 0;
 	pi->units = "";		// no units defined
 	// initialize parameter 6 ("m_h_DELTAMODE_79")

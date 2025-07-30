@@ -270,7 +270,6 @@ public:
             if (name == "attack" || id == "attack") return "ATK";
             if (name == "release" || id == "release") return "REL";
             if (name == "hold" || id == "hold") return "HOLD";
-            if (name == "react" || id == "react") return "REACT";
             if (name == "hpf" || id == "hpf") return "HPF";
             if (name == "lpf" || id == "lpf") return "LPF";
             // Etiquetas actualizadas para transient shaper

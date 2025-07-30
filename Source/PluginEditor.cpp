@@ -41,6 +41,7 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Configurar todos los componentes
     setupBackground();
     setupKnobs();
+    setupButtons();  // Configurar botones FLIP y LINK
     setupMeters();
     setupSidechainControls();
     setupPresetArea();
@@ -351,6 +352,9 @@ void JCBTransientAudioProcessorEditor::resized()
     leftTopKnobs.sensSlider.setBounds(getScaledBounds(50, 48, 53, 53));
     leftTopKnobs.attackSlider.setBounds(getScaledBounds(100, 48, 53, 53));
     leftTopKnobs.sustainSlider.setBounds(getScaledBounds(150, 48, 53, 53));
+    
+    // Botón FLIP - ubicado entre SUST y SENS verticalmente
+    leftTopKnobs.flipButton.setBounds(getScaledBounds(205, 67, 30, 20));  // Centrado verticalmente
 
     // Bottom row - D/W, LA, CLIP (AGAIN está en fila superior)
     leftBottomKnobs.drywetSlider.setBounds(getScaledBounds(74, 100, 53, 53));
@@ -359,7 +363,7 @@ void JCBTransientAudioProcessorEditor::resized()
 
     // === RIGHT SIDE CONTROLS ===
     // Top row - RANGE, REACT, SMOOTH knobs
-    rightTopControls.dmodeButton.setBounds(getScaledBounds(532, 67, 30, 20));
+    rightTopControls.dmodeButton.setBounds(getScaledBounds(532, 67, 33, 20));
     rightTopControls.smoothSlider.setBounds(getScaledBounds(570, 48, 53, 53));
 
     // Bottom row - Attack, Release, Hold
@@ -421,7 +425,7 @@ void JCBTransientAudioProcessorEditor::resized()
     // DIAGRAM centrado en mismo X que botones de sidechain (FILTERS, EXT KEY, SOLO SC)
     centerButtons.diagramButton.setBounds(getScaledBounds(diagramCenterX - 45, centerButtonsY, 40, 12));
     // DELTA movido a la izquierda del slider RANGE - botón rectangular más alto que ancho
-    parameterButtons.deltaButton.setBounds(getScaledBounds(495, 67, 30, 20));
+    parameterButtons.deltaButton.setBounds(getScaledBounds(492, 67, 33, 20));
     // BYPASS a la derecha de DIAGRAM  
     parameterButtons.bypassButton.setBounds(getScaledBounds(diagramCenterX + buttonSpacing - 45, centerButtonsY, 40, 12));
     
@@ -900,6 +904,46 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
             handleParameterChange();
         }
     }
+    else if (button == &leftTopKnobs.flipButton)
+    {
+        // FLIP: Intercambiar valores de TRANS y SUST
+        auto* attackParam = processor.apvts.getParameter("b_ATTACK_GAIN");
+        auto* sustainParam = processor.apvts.getParameter("c_SUSTAIN_GAIN");
+        
+        if (attackParam && sustainParam) {
+            // Obtener valores actuales
+            float currentAttack = attackParam->getValue();
+            float currentSustain = sustainParam->getValue();
+            
+            // Intercambiar valores con gesture para que host decida si acepta los cambios
+            attackParam->beginChangeGesture();
+            sustainParam->beginChangeGesture();
+            attackParam->setValue(currentSustain);  // Sin notificar host - gesture maneja automatización
+            sustainParam->setValue(currentAttack);
+            attackParam->endChangeGesture();
+            sustainParam->endChangeGesture();
+            
+            // Registrar acción undo compound para ambos parámetros
+            undoManager.beginNewTransaction("Flip TRANS/SUST");
+            UndoableParameterHelper::registerChange(&undoManager, *attackParam, currentAttack, currentSustain, 0.0001f);
+            UndoableParameterHelper::registerChange(&undoManager, *sustainParam, currentSustain, currentAttack, 0.0001f);
+            
+            // Feedback visual: destello negro temporal
+            leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::black.withAlpha(0.8f));
+            leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            
+            // Usar SafePointer para prevenir crashes si el editor se destruye antes del timer
+            juce::Component::SafePointer<JCBTransientAudioProcessorEditor> safeThis(this);
+            juce::Timer::callAfterDelay(200, [safeThis]() {
+                if (safeThis) {
+                    safeThis->leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+                    safeThis->leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary);
+                }
+            });
+            
+            handleParameterChange();
+        }
+    }
 }
 
 void JCBTransientAudioProcessorEditor::parameterChanged(const juce::String& parameterID, float newValue)
@@ -973,6 +1017,7 @@ void JCBTransientAudioProcessorEditor::handleParameterChange()
         // Nota: El tooltip se actualiza automáticamente via getTooltipText("extkey") en updateAllTooltips()
     }
 }
+
 
 
 //==============================================================================
@@ -1218,12 +1263,12 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     rightBottomKnobs.holdSlider.setNumDecimalPlacesToDisplay(1);
     // Formato de texto para HOLD en ms
     rightBottomKnobs.holdSlider.textFromValueFunction = [](double value) {
-        if (value < 0.01)
-            return juce::String("OFF");
+        if (value == 0.0)
+            return juce::String("0 ms");
         else if (value < 10.0)
-            return juce::String(value, 1) + " ms";  // 1 decimal para valores < 10
+            return juce::String(value, 2) + " ms";  // 1 decimal para valores < 10
         else
-            return juce::String(value, 0) + " ms";  // Sin decimales >= 10ms
+            return juce::String(value, 1) + " ms";  // Sin decimales >= 10ms
     };
     addAndMakeVisible(rightBottomKnobs.holdSlider);
     if (auto* param = processor.apvts.getParameter("f_HOLD"))
@@ -1255,6 +1300,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, DarkTheme::accentWarm.withAlpha(0.3f));  // Naranja coordinado con Attack
     rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary.withAlpha(0.7f));
     rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
+    rightTopControls.dmodeButton.setLookAndFeel(&smallButtonLAF);
     rightTopControls.dmodeButton.addListener(this);
     addAndMakeVisible(rightTopControls.dmodeButton);
     // Custom attachment para DMODE - mapea botón toggle (OFF/ON) a parámetro (0/2)
@@ -1320,6 +1366,23 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     };
     // ELIMINADO: rangeSlider callback - dmodeButton no necesita transferDisplay
     
+    
+}
+
+void JCBTransientAudioProcessorEditor::setupButtons()
+{
+    // === BOTÓN FLIP ===
+    // Configurar botón FLIP para intercambio de valores TRANS/SUST
+    leftTopKnobs.flipButton.setComponentID("flip");
+    leftTopKnobs.flipButton.setClickingTogglesState(false);  // Botón de acción, no toggle
+    leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+    leftTopKnobs.flipButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xFFFFB366).withAlpha(0.3f)); // Naranja
+    leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary);
+    leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOnId, juce::Colour(0xFFFFB366)); // Naranja
+    leftTopKnobs.flipButton.setLookAndFeel(&smallButtonLAF);
+    leftTopKnobs.flipButton.addListener(this);  // CRÍTICO: Conectar eventos a buttonClicked()
+    addAndMakeVisible(leftTopKnobs.flipButton);
+    leftTopKnobs.flipButton.setTooltip(getTooltipText("flip"));
     
 }
 
@@ -2039,6 +2102,7 @@ void JCBTransientAudioProcessorEditor::setupParameterButtons()
     parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::green.withAlpha(0.3f)); // Color verde cuando ON
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textSecondary.withAlpha(0.7f));
     parameterButtons.deltaButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
+    parameterButtons.deltaButton.setLookAndFeel(&smallButtonLAF);
     parameterButtons.deltaButton.addListener(this);
     addAndMakeVisible(parameterButtons.deltaButton);
     // Attachment de DELTA - ahora automatizable y con undo/redo habilitado
@@ -2944,6 +3008,9 @@ void JCBTransientAudioProcessorEditor::updateAllTooltips()
     leftTopKnobs.sustainSlider.setTooltip(getTooltipText("sust"));
     leftTopKnobs.sensSlider.setTooltip(getTooltipText("sens"));
     
+    // Botón FLIP
+    leftTopKnobs.flipButton.setTooltip(getTooltipText("flip"));
+    
     // Perillas - inferiores izquierdas
     leftBottomKnobs.drywetSlider.setTooltip(getTooltipText("drywet"));
     leftBottomKnobs.lookaheadSlider.setTooltip(getTooltipText("lookahead"));
@@ -3013,21 +3080,19 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     {
         // Spanish tooltips
         if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v0.9.1 beta\nPlugin de audio open source\nClick para créditos");
-        if (key == "tran") return JUCE_UTF8("TRAN: ganancia para transientes de ataque entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
-        if (key == "sust") return JUCE_UTF8("SUST: ganancia para transientes de sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
-        if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0 y 1.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 0.5");
+        if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
+        if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
+        if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 50%");
         if (key == "drywet") return JUCE_UTF8("DRY/WET: mezcla final entre señal original y procesada\nControl de balance entrada/salida\nRango: 0 a 100% | Por defecto: 100%");
         if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: retardo para evitar overshooting\nReporta latencia al host\nRango: 0 a 10 ms | Por defecto: 0 ms");
-        if (key == "clip") return JUCE_UTF8("SOFT CLIP: limitador suave de salida\nPreviene saturación con distorsión armónica\nRango: 0/OFF a 1 | Por defecto: 0/OFF");
-        if (key == "react") return JUCE_UTF8("REACT: respuesta del detector a transientes.\nValores bajos: agresivo | Valores altos: suave.\nRango: 0 a 1 | Por defecto: 0");
-        if (key == "attack") return JUCE_UTF8("ATTACK: tiempo para alcanzar máxima expansión\nVelocidad de respuesta del expansor\nRango: 0.1 a 250 ms | Por defecto: 1 ms");
-        if (key == "release") return JUCE_UTF8("RELEASE: tiempo para volver sin expansión\nPermite valores extremos para efectos creativos\nRango: 0.1 a 1000 ms | Por defecto: 120 ms");
-        if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes del release\nMantiene la expansión por un período fijo\nRango: 0 a 500 ms | Por defecto: 0 ms");
-        if (key == "dmode") return JUCE_UTF8("DMODE: modo de procesamiento (TRANS/SUST)\nControla cómo se aplica el procesamiento de transientes\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
-        if (key == "delta") return JUCE_UTF8("DELTA: escucha la expansión aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
-        if (key == "trim") return JUCE_UTF8("TRIM INPUT: ganancia de entrada al expansor\nAjusta el nivel antes del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
+        if (key == "clip") return JUCE_UTF8("SOFT CLIP: limitador suave de salida\nPreviene saturación con distorsión armónica\nRango: 0/OFF a 100% | Por defecto: OFF");
+        if (key == "attack") return JUCE_UTF8("ATTACK: tiempo para alcanzar máxima ganancia/atenuación\nVelocidad de respuesta\nRango: 0 a 250 ms | Por defecto: 0 ms");
+        if (key == "release") return JUCE_UTF8("RELEASE: tiempo de recuperación\nPermite valores extremos para efectos creativos\nRango: 0.1 a 350 ms | Por defecto: 60 ms");
+        if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes de que comience release\nMantiene la ganancia/atenuación por un período\nRango: 0 a 250 ms | Por defecto: 10 ms");
+        if (key == "dmode") return JUCE_UTF8("DMODE: modo de escucha solo delta (TRANS/SUST)\nConmuta cuando Delta está activo entre:s\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
+        if (key == "delta") return JUCE_UTF8("DELTA: escucha solo la ganancia/reducción aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
+        if (key == "trim") return JUCE_UTF8("TRIM INPUT: ganancia de entrada del procesador\nAjusta el nivel antes del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
         if (key == "makeup") return JUCE_UTF8("MAKEUP: ganancia de salida manual\nAjusta el nivel final después del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
-        if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes del release\nMantiene la expansión por un período fijo\nRango: 0 a 500 ms | Por defecto: 0 ms");
         if (key == "sc") return JUCE_UTF8("FILTERS: activa los filtros del sidechain.\nPermite filtrar la señal, tanto interna como externa, que controla el expansor.\nValor por defecto: OFF");
         if (key == "extkey") return JUCE_UTF8("SIDECHAIN: selecciona cadena lateral interna o externa.\nINT usa la propia señal, EXT usa entradas auxiliares.\nValor por defecto: INT");
         if (key == "solosc") return JUCE_UTF8("SOLO SC: escucha filtros sidechain int/ext\nParámetro global, no automatizable\nRango: OFF/ON | Por defecto: OFF");
@@ -3043,59 +3108,58 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
         if (key == "resetgui") return JUCE_UTF8("SIZE: cicla entre tamaños de ventana\nActual → Máximo → Mínimo → Actual\nAjuste rápido del tamaño del plugin");
         if (key == "bypass") return JUCE_UTF8("BYPASS: desactiva el procesamiento del plugin\nParámetro global, no automatizable. Transición suave\nRango: OFF/ON | Por defecto: OFF");
         if (key == "graphics") return JUCE_UTF8("GRAPHICS: muestra envolventes en tiempo real\nVisualiza env entrada/salida e histograma expansión\nDesactivar mejora rendimiento en CPUs lentas");
-        if (key == "zoom") return JUCE_UTF8("ZOOM: cicla entre vista normal y ampliada\nNormal: -100 a 0dB | x2: -50 a 0dB");
+        if (key == "zoom") return JUCE_UTF8("ZOOM: cicla entre vista normal y ampliado x2\n");
         if (key == "diagram") return JUCE_UTF8("DIAGRAM: muestra diagrama de bloques del procesador\nDespliega menú con código GenExpr por bloque para copiar");
         if (key == "transfer") return JUCE_UTF8("GRÁFICA: visualización de envolventes del transient shaper\nMuestra formas de onda de entrada y salida\nReducción de ganancia en tiempo real");
         if (key == "tooltiptoggle") return JUCE_UTF8("TOOLTIP: muestra/oculta los tooltips de ayuda\nActiva o desactiva las ventanas de ayuda emergentes");
         if (key == "tooltiplang") return JUCE_UTF8("IDIOMA: cambia entre español e inglés.\nAlterna el idioma de los tooltips.");
-        if (key == "sctrim") return JUCE_UTF8("SC TRIM: ganancia entrada sidechain -12 a +12 dB\nAjusta nivel del sidechain externo\nPor defecto: 0 dB, se activa con EXT KEY");
+        if (key == "sctrim") return JUCE_UTF8("SC TRIM: ganancia entrada sidechain -12 a +12 dB\nAjusta nivel del sidechain externo\nPor defecto: 0 dB, se activa con SC EXT");
         if (key == "link") return JUCE_UTF8("STEREO LINKED: siempre activo.\nEl plugin solo funciona en modo stereo linked.\nAmbos canales siempre están vinculados");
         if (key == "smooth") return JUCE_UTF8("SMOOTH: suavizado extra del detector de envolvente\nControla cantidad de suavizado en la detección\nRango: 0 (RAW) a 1 (SMOOTH) | Por defecto: 0");
+        if (key == "flip") return JUCE_UTF8("FLIP: intercambia valores de TRANS y SUST\nÚtil para probar rápidamente el efecto inverso");
     }
     else
-    {
-        // English tooltips
-        if (key == "title") return "JCBTransient: transient shaper v0.9.1 beta\nOpen source audio plugin\nClick for credits";
-        if (key == "tran") return "TRAN: gain for attack transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault value: 0 dB";
-        if (key == "sust") return "SUST: gain for sustain transients between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault value: 0 dB";
-        if (key == "sens") return "SENS: detection sensitivity between 0 and 1.\nControls the sensitivity of the transient detection algorithm.\nDefault value: 0.5";
-        if (key == "drywet") return "DRY/WET: final mix between original and processed signal\nInput/output balance control\nRange: 0 to 100% | Default: 100%";
-        if (key == "lookahead") return "LOOK AHEAD: delay to prevent overshooting\nReports latency to host\nRange: 0 to 10 ms | Default: 0 ms";
-        if (key == "clip") return "SOFT CLIP: soft output limiter\nPrevents clipping with harmonic distortion\nRange: 0/OFF to 1 | Default: 0/OFF";
-        if (key == "react") return "REACT: detector response to transients.\nLow values: aggressive | High values: smooth.\nRange: 0 to 1 | Default: 0";
-        if (key == "attack") return "ATTACK: time to reach maximum expansion\nExpander response speed\nRange: 0.1 to 250 ms | Default: 1 ms";
-        if (key == "release") return "RELEASE: time to return unexpanded\nAllows extreme values for creative effects\nRange: 0.1 to 1000 ms | Default: 120 ms";
-        if (key == "hold") return "HOLD: retention time before release\nMaintains expansion for a fixed period\nRange: 0 to 500 ms | Default: 0 ms";
-        if (key == "dmode") return "DMODE: processing mode (TRANS/SUST)\nControls how transient processing is applied\nTRANS: attack | SUST: sustain | Default: TRANS";
-        if (key == "delta") return "DELTA: listen to applied expansion\nAutomatable parameter, saved in presets\nRange: OFF/ON | Default: OFF";
-        if (key == "trim") return "TRIM INPUT: expander input gain\nAdjusts level before processing\nRange: -12 to +12 dB | Default: 0 dB";
-        if (key == "makeup") return "MAKEUP: manual output gain\nAdjusts final level after processing\nRange: -12 to +12 dB | Default: 0 dB";
-        if (key == "hold") return "HOLD: retention time before release\nMaintains expansion for a fixed period\nRange: 0 to 500 ms | Default: 0 ms";
-        if (key == "sc") return "FILTERS: activates sidechain filters.\nAllows filtering the signal, both internal and external, that controls the expander.\nDefault: OFF";
-        if (key == "extkey") return "SIDECHAIN: selects internal or external sidechain.\nINT uses input signal, EXT uses auxiliary inputs.\nDefault: INT";
-        if (key == "solosc") return "SOLO SC: listen to int/ext sidechain filters\nGlobal parameter, non-automatable\nRange: OFF/ON | Default: OFF";
-        if (key == "hpf") return "HPF: sidechain high-pass filter\nFilters frequencies from expansion detector\nRange: 20 to 20k Hz | Default: 20 Hz";
-        if (key == "lpf") return "LPF: sidechain low-pass filter.\nRemoves treble frequencies from detector.\nRange: 20 Hz to 20 kHz | Default: 20 kHz";
-        if (key == "save") return "SAVE: save or overwrite preset\nSave new or update current preset";
-        if (key == "saveas") return "SAVE AS: save as new preset.\nCreates new preset file with current values.\nAllows creating custom presets";
-        if (key == "delete") return "DELETE: remove selected preset\nRequires confirmation before deleting";
-        if (key == "back") return "PREVIOUS: select previous preset\nNavigate backwards through preset list";
-        if (key == "next") return "NEXT: select next preset\nNavigate forward through preset list";
-        if (key == "undo") return "UNDO: revert last change\nUndo modification made manually by the user\nHistory: up to 20 steps";
-        if (key == "redo") return "REDO: reapply undone change\nRedo manually made modification previously reverted\nHistory: up to 20 steps";
-        if (key == "resetgui") return JUCE_UTF8("SIZE: cycles through window sizes\nCurrent → Maximum → Minimum → Current\nQuick plugin size adjustment");
-        if (key == "bypass") return "BYPASS: disables plugin processing\nGlobal parameter, non-automatable. Smooth transition\nRange: OFF/ON | Default: OFF";
-        if (key == "graphics") return "GRAPHICS: shows real-time envelopes\nDisplays input/output env and expansion histogram\nDisable to improve performance on slow CPUs";
-        if (key == "zoom") return "ZOOM: cycles between normal and zoomed view\nNormal: -100 to 0dB | x2: -50 to 0dB";
-        if (key == "diagram") return "DIAGRAM: shows processor block diagram\nDisplays menu with GenExpr code per block for copying";
-        if (key == "transfer") return "GRAPH: transient shaper envelope visualization\nShows input and output waveforms\nReal-time gain reduction display";
-        if (key == "tooltiptoggle") return "TOOLTIP: show/hide help tooltips.\nEnables or disables popup help windows.";
-        if (key == "tooltiplang") return "LANGUAGE: switch between Spanish and English.\nToggles tooltip language.";
-        if (key == "sctrim") return "SC TRIM: sidechain input gain -12 to +12 dB\nAdjusts external sidechain level\nDefault: 0 dB, activated with EXT KEY";
-        if (key == "link") return "STEREO LINKED: always active.\nPlugin only works in stereo linked mode.\nBoth channels are always linked";
-        if (key == "smooth") return "SMOOTH: extra envelope detector smoothing\nControls smoothing amount applied to detection\nRange: 0 (RAW) to 1 (SMOOTH) | Default: 0";
-    }
-
+	{
+	    // English tooltips
+	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v0.9.1 beta\nOpen source audio plugin\nClick for credits");
+	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
+	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
+	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 50%");
+	    if (key == "drywet") return JUCE_UTF8("DRY/WET: final mix between original and processed signal\nInput/output balance control\nRange: 0 to 100% | Default: 100%");
+	    if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: delay to prevent overshooting\nReports latency to host\nRange: 0 to 10 ms | Default: 0 ms");
+	    if (key == "clip") return JUCE_UTF8("SOFT CLIP: soft output limiter\nPrevents clipping with harmonic distortion\nRange: 0/OFF to 100% | Default: OFF");
+	    if (key == "attack") return JUCE_UTF8("ATTACK: time to reach max gain/attenuation\nResponse speed\nRange: 0 to 250 ms | Default: 0 ms");
+	    if (key == "release") return JUCE_UTF8("RELEASE: recovery time\nAllows extreme values for creative effects\nRange: 0.1 to 350 ms | Default: 60 ms");
+	    if (key == "hold") return JUCE_UTF8("HOLD: hold time before release starts\nMaintains gain/attenuation for a period\nRange: 0 to 250 ms | Default: 10 ms");
+	    if (key == "dmode") return JUCE_UTF8("DMODE: delta listening mode (TRANS/SUST)\nSwitches when Delta is active between:\nTRANS: attack | SUST: sustain | Default: TRANS");
+	    if (key == "delta") return JUCE_UTF8("DELTA: listen to gain/reduction only\nAutomatable parameter, saved in presets\nRange: OFF/ON | Default: OFF");
+	    if (key == "trim") return JUCE_UTF8("TRIM INPUT: input gain of the processor\nAdjusts level before processing\nRange: -12 to +12 dB | Default: 0 dB");
+	    if (key == "makeup") return JUCE_UTF8("MAKEUP: manual output gain\nAdjusts final level after processing\nRange: -12 to +12 dB | Default: 0 dB");
+	    if (key == "sc") return JUCE_UTF8("FILTERS: activates sidechain filters.\nFilters the signal, internal or external, that controls the expander.\nDefault: OFF");
+	    if (key == "extkey") return JUCE_UTF8("SIDECHAIN: selects internal or external sidechain.\nINT uses the main signal, EXT uses auxiliary inputs.\nDefault: INT");
+	    if (key == "solosc") return JUCE_UTF8("SOLO SC: monitor int/ext sidechain filters\nGlobal parameter, not automatable\nRange: OFF/ON | Default: OFF");
+	    if (key == "hpf") return JUCE_UTF8("HPF: sidechain high-pass filter\nFilters frequencies from the expander detector\nRange: 20 to 20k Hz | Default: 20 Hz");
+	    if (key == "lpf") return JUCE_UTF8("LPF: sidechain low-pass filter\nRemoves high frequencies from detector\nRange: 20 Hz to 20 kHz | Default: 20 kHz");
+	    if (key == "save") return JUCE_UTF8("SAVE: save or overwrite preset\nSave new or update current preset");
+	    if (key == "saveas") return JUCE_UTF8("SAVE AS: save as new preset\nCreates a new preset file with current values\nAllows creating custom presets");
+	    if (key == "delete") return JUCE_UTF8("DELETE: remove selected preset\nRequires confirmation before deleting");
+	    if (key == "back") return JUCE_UTF8("PREVIOUS: select previous preset\nNavigate backwards in the preset list");
+	    if (key == "next") return JUCE_UTF8("NEXT: select next preset\nNavigate forward in the preset list");
+	    if (key == "undo") return JUCE_UTF8("UNDO: revert last change\nUndo manually made modifications\nHistory: up to 20 steps");
+	    if (key == "redo") return JUCE_UTF8("REDO: reapply undone change\nRedo manual modification previously reverted\nHistory: up to 20 steps");
+	    if (key == "resetgui") return JUCE_UTF8("SIZE: cycles through window sizes\nCurrent → Maximum → Minimum → Current\nQuick plugin size adjustment");
+	    if (key == "bypass") return JUCE_UTF8("BYPASS: disables plugin processing\nGlobal parameter, not automatable. Smooth transition\nRange: OFF/ON | Default: OFF");
+	    if (key == "graphics") return JUCE_UTF8("GRAPHICS: shows real-time envelopes\nDisplays input/output env and expansion histogram\nDisable to improve performance on slow CPUs");
+	    if (key == "zoom") return JUCE_UTF8("ZOOM: cycles between normal and 2x view\n");
+	    if (key == "diagram") return JUCE_UTF8("DIAGRAM: shows processor block diagram\nDisplays menu with GenExpr code per block for copying");
+	    if (key == "transfer") return JUCE_UTF8("GRAPH: transient shaper envelope visualization\nShows input and output waveforms\nReal-time gain reduction display");
+	    if (key == "tooltiptoggle") return JUCE_UTF8("TOOLTIP: show/hide help tooltips\nEnables or disables popup help windows");
+	    if (key == "tooltiplang") return JUCE_UTF8("LANGUAGE: switch between Spanish and English.\nToggles tooltip language.");
+	    if (key == "sctrim") return JUCE_UTF8("SC TRIM: sidechain input gain -12 to +12 dB\nAdjusts external sidechain level\nDefault: 0 dB, activated with SC EXT");
+	    if (key == "link") return JUCE_UTF8("STEREO LINKED: always active.\nPlugin only works in stereo linked mode.\nBoth channels are always linked");
+	    if (key == "smooth") return JUCE_UTF8("SMOOTH: extra envelope detector smoothing\nControls smoothing amount in detection\nRange: 0 (RAW) to 1 (SMOOTH) | Default: 0");
+	    if (key == "flip") return JUCE_UTF8("FLIP: swaps TRANS and SUST values\nUseful for quickly testing inverse effect");
+	}
     return "";
 }
 

@@ -652,9 +652,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
                                                                   juce::NormalisableRange<float>(-18.f, 18.f, 0.1f, 1.f),
                                                                   0.f);
 
-   // d_ATK @min 0 @max 250 @default 1
+   // d_ATK @min 0 @max 150 @default 1
    auto atkRange = juce::NormalisableRange<float>(
-       0.f, 250.f,
+       0.f, 150.f,
        [](float start, float end, float normalised) {
            return start + (end - start) * std::pow(normalised, 1.8f);
        },
@@ -720,40 +720,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        },
        nullptr);
 
-   // f_HOLD @min 0 @max 500 @default 0
+   // f_HOLD @min 0 @max 250 @default 0
    auto hold = std::make_unique<juce::AudioParameterFloat>(
        juce::ParameterID("f_HOLD", versionHint),
        juce::CharPointer_UTF8("Hold"),
-       juce::NormalisableRange<float>(0.f, 500.f, 0.1f, 1.f),
+       juce::NormalisableRange<float>(0.f, 250.f, 0.1f, 1.f),
        0.f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int){
-           if (value < 0.1f)
-               return juce::String("OFF");
+           if (value == 0.0f)
+               return juce::String("0 ms");
            else if (value < 10.0f)
-               return juce::String(value, 1) + " ms";
+               return juce::String(value, 2) + " ms";
            else
-               return juce::String(value, 0) + " ms";
+               return juce::String(value, 1) + " ms";
        },
        nullptr);
 
-   // g_REACT @min 0 @max 1 @default 0 (Peak/RMS mix)
-   auto react = std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("g_REACT", versionHint),
-                                                            juce::CharPointer_UTF8("React"),
-                                                            juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.f),
-                                                            0.f,
-                                                            juce::String(),
-                                                            juce::AudioParameterFloat::genericParameter,
-                                                            [](float value, int){
-                                                                if (value < 0.01f)
-                                                                    return juce::String("Peak");
-                                                                else if (value > 0.99f)
-                                                                    return juce::String("RMS");
-                                                                else
-                                                                    return juce::String(value, 2);
-                                                            },
-                                                            nullptr);
 
    // h_DELTAMODE @min 0 @max 2 @default 0 (Delta Mode: 0=Trans, 2=Sustain)
    auto deltaMode = std::make_unique<juce::AudioParameterChoice>(juce::ParameterID("h_DELTAMODE", versionHint),
@@ -888,7 +872,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
    params.push_back(std::move(atk));            // d_ATK
    params.push_back(std::move(rel));            // e_REL
    params.push_back(std::move(hold));           // f_HOLD
-   params.push_back(std::move(react));          // g_REACT
    params.push_back(std::move(deltaMode));      // h_DELTAMODE
    params.push_back(std::move(makeup));         // i_MAKEUP
    params.push_back(std::move(hpf));            // j_HPF
