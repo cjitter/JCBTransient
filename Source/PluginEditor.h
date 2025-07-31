@@ -132,6 +132,33 @@ private:
             float fontSize = static_cast<float>(buttonHeight) * 0.5f;
             return juce::Font(juce::FontOptions(fontSize)).withStyle(juce::Font::bold);
         }
+        
+        void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour,
+                                 bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
+        {
+            auto bounds = button.getLocalBounds().toFloat();
+            
+            // Para botones deshabilitados, usar los colores personalizados en lugar del comportamiento por defecto
+            juce::Colour fillColour = backgroundColour;
+            
+            if (!button.isEnabled())
+            {
+                // Mantener el color personalizado incluso cuando está deshabilitado
+                // El color ya está configurado por setColour() en el botón
+                fillColour = backgroundColour;
+            }
+            else if (shouldDrawButtonAsDown)
+            {
+                fillColour = fillColour.brighter(0.1f);
+            }
+            else if (shouldDrawButtonAsHighlighted)
+            {
+                fillColour = fillColour.brighter(0.05f);
+            }
+            
+            g.setColour(fillColour);
+            g.fillRoundedRectangle(bounds, 4.0f);
+        }
     };
     
     //==========================================================================

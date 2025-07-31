@@ -173,7 +173,7 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Configurar AUTO RELEASE button
     
     // ELIMINADO: Configuración especial inicial para DELTA - ahora funciona como botón normal
-    parameterButtons.deltaButton.setButtonText("DELTA");  // Texto siempre igual
+    parameterButtons.deltaButton.setButtonText("SOLO DELTA");  // Texto actualizado
     
     updateButtonStates();
     updateFilterButtonText();  // Establecer texto inicial de botones de filtro
@@ -363,13 +363,13 @@ void JCBTransientAudioProcessorEditor::resized()
 
     // === RIGHT SIDE CONTROLS ===
     // Top row - RANGE, REACT, SMOOTH knobs
-    rightTopControls.dmodeButton.setBounds(getScaledBounds(532, 67, 33, 20));
-    rightTopControls.smoothSlider.setBounds(getScaledBounds(570, 48, 53, 53));
+    rightTopControls.dmodeButton.setBounds(getScaledBounds(530, 67, 40, 20));
+    rightTopControls.smoothSlider.setBounds(getScaledBounds(575, 48, 53, 53));
 
     // Bottom row - Attack, Release, Hold
-    rightBottomKnobs.atkSlider.setBounds(getScaledBounds(473, 100, 53, 53));
+    rightBottomKnobs.atkSlider.setBounds(getScaledBounds(468, 100, 53, 53));
     rightBottomKnobs.holdSlider.setBounds(getScaledBounds(532, 100, 53, 53));
-    rightBottomKnobs.relSlider.setBounds(getScaledBounds(592, 100, 53, 53));
+    rightBottomKnobs.relSlider.setBounds(getScaledBounds(605, 100, 53, 53));
 
     // === SIDECHAIN CONTROLS (TOP CENTER) ===
     // HPF and LPF knobs swapped with their order buttons
@@ -425,7 +425,7 @@ void JCBTransientAudioProcessorEditor::resized()
     // DIAGRAM centrado en mismo X que botones de sidechain (FILTERS, EXT KEY, SOLO SC)
     centerButtons.diagramButton.setBounds(getScaledBounds(diagramCenterX - 45, centerButtonsY, 40, 12));
     // DELTA movido a la izquierda del slider RANGE - botón rectangular más alto que ancho
-    parameterButtons.deltaButton.setBounds(getScaledBounds(492, 67, 33, 20));
+    parameterButtons.deltaButton.setBounds(getScaledBounds(472, 67, 52, 20));
     // BYPASS a la derecha de DIAGRAM  
     parameterButtons.bypassButton.setBounds(getScaledBounds(diagramCenterX + buttonSpacing - 45, centerButtonsY, 40, 12));
     
@@ -1280,8 +1280,8 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
 
     // AR - botón con texto dinámico AR OFF/AR ON (removido - ya no existe)
     
-    // DELTA - botón con texto "DELTA" (estilo SC)
-    parameterButtons.deltaButton.setButtonText("DELTA");
+    // SOLO DELTA - botón con texto "SOLO DELTA" (estilo SC)
+    parameterButtons.deltaButton.setButtonText("SOLO DELTA");
     parameterButtons.deltaButton.setClickingTogglesState(true);
     parameterButtons.deltaButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
     parameterButtons.deltaButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::green.withAlpha(0.3f)); // Color verde cuando ON
@@ -2109,7 +2109,7 @@ void JCBTransientAudioProcessorEditor::setupParameterButtons()
     parameterButtons.deltaAttachment = std::make_unique<UndoableButtonAttachment>(
         *processor.apvts.getParameter("v_DELTA"), parameterButtons.deltaButton, &undoManager);
     parameterButtons.deltaAttachment->onParameterChange = [this]() { handleParameterChange(); };
-    parameterButtons.deltaButton.setTooltip(JUCE_UTF8("DELTA: escucha solo la diferencia (AUTOMATIZABLE).\nReproducir la señal procesada menos la original.\nSe guarda en presets y es controlable por DAW."));
+    parameterButtons.deltaButton.setTooltip(JUCE_UTF8("SOLO DELTA: escucha solo la diferencia (AUTOMATIZABLE).\nReproducir la señal procesada menos la original.\nSe guarda en presets y es controlable por DAW."));
     
     // Botón BYPASS - movido desde utilityButtons
     parameterButtons.bypassButton.setClickingTogglesState(true);
@@ -2281,7 +2281,7 @@ void JCBTransientAudioProcessorEditor::updateDmodeButtonText()
         if (value == 0) {
             rightTopControls.dmodeButton.setButtonText("TRANS");
             // TRANS está OFF: usar buttonColourId (estado OFF) con naranja claro
-            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, DarkTheme::accentWarmLight.withAlpha(0.3f));
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffFD9966).withAlpha(0.4f));
             rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::transparentBlack);
             // Texto blanco para máxima legibilidad sobre fondo naranja
             rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
@@ -2295,7 +2295,7 @@ void JCBTransientAudioProcessorEditor::updateDmodeButtonText()
         } else {
             // Fallback para valor inesperado
             rightTopControls.dmodeButton.setButtonText("TRANS");
-            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, DarkTheme::accentWarmLight.withAlpha(0.3f));
+            rightTopControls.dmodeButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffFD9966).withAlpha(0.5f));
             rightTopControls.dmodeButton.setColour(juce::TextButton::buttonOnColourId, juce::Colours::transparentBlack);
             rightTopControls.dmodeButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
         }
@@ -3090,7 +3090,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
         if (key == "release") return JUCE_UTF8("RELEASE: tiempo de recuperación\nPermite valores extremos para efectos creativos\nRango: 0.1 a 350 ms | Por defecto: 60 ms");
         if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes de que comience release\nMantiene la ganancia/atenuación por un período\nRango: 0 a 250 ms | Por defecto: 10 ms");
         if (key == "dmode") return JUCE_UTF8("DMODE: modo de escucha solo delta (TRANS/SUST)\nConmuta cuando Delta está activo entre:s\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
-        if (key == "delta") return JUCE_UTF8("DELTA: escucha solo la ganancia/reducción aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
+        if (key == "delta") return JUCE_UTF8("SOLO DELTA: escucha solo la ganancia/reducción aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
         if (key == "trim") return JUCE_UTF8("TRIM INPUT: ganancia de entrada del procesador\nAjusta el nivel antes del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
         if (key == "makeup") return JUCE_UTF8("MAKEUP: ganancia de salida manual\nAjusta el nivel final después del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
         if (key == "sc") return JUCE_UTF8("FILTERS: activa los filtros del sidechain.\nPermite filtrar la señal, tanto interna como externa, que controla el expansor.\nValor por defecto: OFF");
@@ -3132,7 +3132,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
 	    if (key == "release") return JUCE_UTF8("RELEASE: recovery time\nAllows extreme values for creative effects\nRange: 0.1 to 350 ms | Default: 60 ms");
 	    if (key == "hold") return JUCE_UTF8("HOLD: hold time before release starts\nMaintains gain/attenuation for a period\nRange: 0 to 250 ms | Default: 10 ms");
 	    if (key == "dmode") return JUCE_UTF8("DMODE: delta listening mode (TRANS/SUST)\nSwitches when Delta is active between:\nTRANS: attack | SUST: sustain | Default: TRANS");
-	    if (key == "delta") return JUCE_UTF8("DELTA: listen to gain/reduction only\nAutomatable parameter, saved in presets\nRange: OFF/ON | Default: OFF");
+	    if (key == "delta") return JUCE_UTF8("SOLO DELTA: listen to gain/reduction only\nAutomatable parameter, saved in presets\nRange: OFF/ON | Default: OFF");
 	    if (key == "trim") return JUCE_UTF8("TRIM INPUT: input gain of the processor\nAdjusts level before processing\nRange: -12 to +12 dB | Default: 0 dB");
 	    if (key == "makeup") return JUCE_UTF8("MAKEUP: manual output gain\nAdjusts final level after processing\nRange: -12 to +12 dB | Default: 0 dB");
 	    if (key == "sc") return JUCE_UTF8("FILTERS: activates sidechain filters.\nFilters the signal, internal or external, that controls the expander.\nDefault: OFF");
@@ -3469,7 +3469,7 @@ int JCBTransientAudioProcessorEditor::getControlParameterIndex(juce::Component& 
     // Parámetros no automatizables (retornar -1)
     // Estos son parámetros globales/utility que no deberían mostrar carriles de automatización
     else if (&control == &sidechainControls.soloScButton) return -1;  // m_SOLOSC (no automatizable)
-    else if (&control == &parameterButtons.deltaButton) return -1;      // v_DELTA (ahora automatizable)
+    else if (&control == &parameterButtons.deltaButton) return getParameterIndexByID("v_DELTA");  // v_DELTA automatizable
     else if (&control == &parameterButtons.bypassButton) return -1;     // p_BYPASS (no automatizable)
     
     // Obtener índice dinámico de parámetro

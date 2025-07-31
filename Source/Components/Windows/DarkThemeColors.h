@@ -37,7 +37,7 @@ namespace DarkTheme
     const Colour accent = Colour(0xff4a9eff);             // Blue accent principal
     const Colour accentSecondary = Colour(0xff7c4dff);    // Purple accent secundario
     const Colour accentWarm = Colour(0xffff6b35);         // Orange accent cálido
-    const Colour accentWarmLight = Colour(0xffff9966);    // Orange accent claro para knob TRANS
+    const Colour accentWarmLight = Colour(0xffFD9966);    // Orange accent claro para knob TRANS
     const Colour accentYellow = Colour(0xffffd23f);       // Yellow accent para Attack
     
     //==========================================================================

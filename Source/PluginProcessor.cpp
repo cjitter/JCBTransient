@@ -1188,7 +1188,7 @@ void JCBTransientAudioProcessor::setStateInformation(const void* data, int sizeI
         // Forzar parámetros momentáneos a OFF después de cargar
         apvts.getParameter("p_BYPASS")->setValueNotifyingHost(0.0f);
         apvts.getParameter("m_SOLOSC")->setValueNotifyingHost(0.0f);
-        apvts.getParameter("v_DELTA")->setValueNotifyingHost(0.0f);
+        // DELTA ya no se resetea - ahora es automatizable y persistente
         
         // Clear undo history AFTER all values have been set
         // This prevents any parameter changes from being recorded in undo history
