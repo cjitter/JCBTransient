@@ -800,6 +800,43 @@ private:
     
     std::unique_ptr<DiagramOverlay> diagramOverlay;
     
+    // Overlay para efecto fogonazo al pulsar FLIP
+    class FlipFlashOverlay : public juce::Component
+    {
+    public:
+        FlipFlashOverlay(JCBTransientAudioProcessorEditor& editor) : owner(editor)
+        {
+            setInterceptsMouseClicks(false, false);  // No interceptar clics
+            setAlwaysOnTop(true);  // Aparecer encima de todo
+        }
+        
+        void paint(juce::Graphics& g) override
+        {
+            // Efecto fogonazo sobre sliders TRANS y SUST
+            drawFlashGlow(g);
+        }
+        
+    private:
+        JCBTransientAudioProcessorEditor& owner;
+        
+        void drawFlashGlow(juce::Graphics& g)
+        {
+            // Crear una zona unificada que cubra ambos sliders TRANS y SUST
+            // TRANS: X=100, SUST: X=150, ambos de 53px de ancho
+            // Zona unificada: desde X=100 hasta X=203 (150+53), Y=48, altura=53
+            auto unifiedBounds = owner.getScaledBounds(100, 48, 103, 53).toFloat();
+            
+            // Efecto "gasa" muy sutil - como un velo blanco casi imperceptible
+            auto gasaColor = juce::Colours::white.withAlpha(0.035f);
+            
+            // Una sola capa tipo "gasa" que cubre la zona de ambos sliders
+            g.setColour(gasaColor);
+            g.fillRoundedRectangle(unifiedBounds, 6.0f);
+        }
+    };
+    
+    std::unique_ptr<FlipFlashOverlay> flipFlashOverlay;
+    
     //==========================================================================
     // FUNCIONES UTILITY Y HELPER
     //==========================================================================

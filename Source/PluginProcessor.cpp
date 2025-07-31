@@ -673,7 +673,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("d_ATK", versionHint),
        juce::CharPointer_UTF8("Attack"),
        atkRange,
-       1.0f,
+       0.0f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int){
@@ -707,7 +707,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("e_REL", versionHint),
        juce::CharPointer_UTF8("Release"),
        relRange,
-       60.0f,
+       120.0f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int){
@@ -725,7 +725,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("f_HOLD", versionHint),
        juce::CharPointer_UTF8("Hold"),
        juce::NormalisableRange<float>(0.f, 250.f, 0.1f, 1.f),
-       0.f,
+       30.0f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int){
@@ -815,7 +815,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("q_SENSITIVITY", versionHint),
        juce::CharPointer_UTF8("Sensitivity"),
        juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.f),
-       0.5f,
+       1.0f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int) { return juce::String(juce::roundToInt(value * 100)) + "%"; },

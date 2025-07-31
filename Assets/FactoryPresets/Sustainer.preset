@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <PARAMETERS>
-  <PARAM id="a_TRIM" value="12.0"/>
+  <PARAM id="a_TRIM" value="1.788139343261719e-7"/>
   <PARAM id="b_ATTACK_GAIN" value="-18.0"/>
   <PARAM id="c_SUSTAIN_GAIN" value="18.0"/>
   <PARAM id="d_ATK" value="27.89999961853027"/>
@@ -9,7 +9,7 @@
   <PARAM id="f_HOLD" value="94.59999847412109"/>
   <PARAM id="g_REACT" value="0.0"/>
   <PARAM id="h_DELTAMODE" value="2.0"/>
-  <PARAM id="i_MAKEUP" value="12.0"/>
+  <PARAM id="i_MAKEUP" value="1.788139343261719e-7"/>
   <PARAM id="j_HPF" value="20.0"/>
   <PARAM id="j_HPFORDER" value="0.0"/>
   <PARAM id="k_LPF" value="20000.0"/>

@@ -368,7 +368,7 @@ void JCBTransientAudioProcessorEditor::resized()
 
     // Bottom row - Attack, Release, Hold
     rightBottomKnobs.atkSlider.setBounds(getScaledBounds(468, 100, 53, 53));
-    rightBottomKnobs.holdSlider.setBounds(getScaledBounds(532, 100, 53, 53));
+    rightBottomKnobs.holdSlider.setBounds(getScaledBounds(535, 100, 53, 53));
     rightBottomKnobs.relSlider.setBounds(getScaledBounds(605, 100, 53, 53));
 
     // === SIDECHAIN CONTROLS (TOP CENTER) ===
@@ -928,12 +928,28 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
             UndoableParameterHelper::registerChange(&undoManager, *attackParam, currentAttack, currentSustain, 0.0001f);
             UndoableParameterHelper::registerChange(&undoManager, *sustainParam, currentSustain, currentAttack, 0.0001f);
             
-            // Feedback visual: destello negro temporal
-            leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::black.withAlpha(0.8f));
-            leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            // Efecto fogonazo sobre sliders TRANS y SUST
+            if (!flipFlashOverlay) {
+                flipFlashOverlay = std::make_unique<FlipFlashOverlay>(*this);
+            }
+            addAndMakeVisible(flipFlashOverlay.get());
+            flipFlashOverlay->setBounds(getLocalBounds());
+            
+            // Feedback visual: efecto gasa temporal (igual que el overlay)
+            leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::white.withAlpha(0.035f));
+            leftTopKnobs.flipButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
             
             // Usar SafePointer para prevenir crashes si el editor se destruye antes del timer
             juce::Component::SafePointer<JCBTransientAudioProcessorEditor> safeThis(this);
+            
+            // Ocultar efecto fogonazo después de 150ms (más corto para efecto rápido)
+            juce::Timer::callAfterDelay(150, [safeThis]() {
+                if (safeThis && safeThis->flipFlashOverlay) {
+                    safeThis->removeChildComponent(safeThis->flipFlashOverlay.get());
+                }
+            });
+            
+            // Restaurar botón FLIP después de 200ms
             juce::Timer::callAfterDelay(200, [safeThis]() {
                 if (safeThis) {
                     safeThis->leftTopKnobs.flipButton.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
@@ -1090,7 +1106,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     // Configurar color amarillo para SENS (distintivo)
     leftTopKnobs.sensSlider.setColour(juce::Slider::rotarySliderOutlineColourId, DarkTheme::accentYellow);
     leftTopKnobs.sensSlider.setTextBoxIsEditable(true);
-    leftTopKnobs.sensSlider.setDoubleClickReturnValue(true, 0.5);
+    leftTopKnobs.sensSlider.setDoubleClickReturnValue(true, 1.0);
     leftTopKnobs.sensSlider.setPopupDisplayEnabled(false, false, this);
     leftTopKnobs.sensSlider.setNumDecimalPlacesToDisplay(0);  // Sin decimales para mostrar porcentajes
     leftTopKnobs.sensSlider.textFromValueFunction = [](double value) { return juce::String(juce::roundToInt(value * 100)) + "%"; };
@@ -1193,7 +1209,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     rightBottomKnobs.atkSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
     rightBottomKnobs.atkSlider.setLookAndFeel(&sliderLAFBig);
     rightBottomKnobs.atkSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    rightBottomKnobs.atkSlider.setDoubleClickReturnValue(true, 1.0);  // Valor por defecto 1ms
+    rightBottomKnobs.atkSlider.setDoubleClickReturnValue(true, 0.0);  // Valor por defecto 0ms
     rightBottomKnobs.atkSlider.setPopupDisplayEnabled(false, false, this);
     rightBottomKnobs.atkSlider.setTextBoxIsEditable(true);
     // Custom text formatting con decimales progresivos
@@ -1257,7 +1273,7 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     rightBottomKnobs.holdSlider.setLookAndFeel(&sliderLAFBig);
     rightBottomKnobs.holdSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     rightBottomKnobs.holdSlider.setRange(0.0, 500.0, 0.1);
-    rightBottomKnobs.holdSlider.setDoubleClickReturnValue(true, 0.0);
+    rightBottomKnobs.holdSlider.setDoubleClickReturnValue(true, 30.0);
     rightBottomKnobs.holdSlider.setPopupDisplayEnabled(false, false, this);
     rightBottomKnobs.holdSlider.setTextBoxIsEditable(true);
     rightBottomKnobs.holdSlider.setNumDecimalPlacesToDisplay(1);
@@ -1467,7 +1483,7 @@ void JCBTransientAudioProcessorEditor::setupSidechainControls()
     sidechainControls.hpfSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::white);  // Blanco fijo
     sidechainControls.hpfSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);  // Blanco fijo
     sidechainControls.hpfSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    sidechainControls.hpfSlider.setTextBoxIsEditable(false);
+    sidechainControls.hpfSlider.setTextBoxIsEditable(true);
     sidechainControls.hpfSlider.setEnabled(false);  // Inicialmente deshabilitado
     sidechainControls.hpfSlider.setAlpha(0.0f);  // Inicialmente invisible
     sidechainControls.hpfSlider.setDoubleClickReturnValue(true, 20.0f);
@@ -1501,7 +1517,7 @@ void JCBTransientAudioProcessorEditor::setupSidechainControls()
     sidechainControls.lpfSlider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colours::white);  // Blanco fijo
     sidechainControls.lpfSlider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);  // Blanco fijo
     sidechainControls.lpfSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    sidechainControls.lpfSlider.setTextBoxIsEditable(false);
+    sidechainControls.lpfSlider.setTextBoxIsEditable(true);
     sidechainControls.lpfSlider.setEnabled(false);  // Inicialmente deshabilitado
     sidechainControls.lpfSlider.setAlpha(0.0f);  // Inicialmente invisible
     sidechainControls.lpfSlider.setDoubleClickReturnValue(true, 20000.0f);
@@ -1712,12 +1728,12 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 trimSlider.setValue(realValue, juce::sendNotificationSync);
             }
-            if (auto* param = processor.apvts.getParameter("b_THD")) {
+            if (auto* param = processor.apvts.getParameter("b_ATTACK_GAIN")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 leftTopKnobs.attackSlider.setValue(realValue, juce::sendNotificationSync);
             }
-            if (auto* param = processor.apvts.getParameter("c_RATIO")) {
+            if (auto* param = processor.apvts.getParameter("c_SUSTAIN_GAIN")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 leftTopKnobs.sustainSlider.setValue(realValue, juce::sendNotificationSync);
@@ -1739,7 +1755,7 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
             }
             // REACT ELIMINADO - parámetro ya no existe
             // ELIMINADO: h_RANGE reset - dmodeButton para h_DELTAMODE se resetea automáticamente
-            if (auto* param = processor.apvts.getParameter("q_KNEE")) {
+            if (auto* param = processor.apvts.getParameter("q_SENSITIVITY")) {
                 float defaultValue = param->getDefaultValue();
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 leftTopKnobs.sensSlider.setValue(realValue, juce::sendNotificationSync);
@@ -1809,7 +1825,17 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
                 rightTopControls.smoothSlider.setValue(realValue, juce::sendNotificationSync);
             }
-            // Los botones de orden de filtro se actualizan automáticamente a través de sus attachments
+            // Resetear orden de filtros HPF y LPF
+            if (auto* param = processor.apvts.getParameter("j_HPFORDER")) {
+                float defaultValue = param->getDefaultValue();
+                float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
+                sidechainControls.hpfOrderButton.setToggleState(realValue >= 0.5f, juce::sendNotificationSync);
+            }
+            if (auto* param = processor.apvts.getParameter("k_LPFORDER")) {
+                float defaultValue = param->getDefaultValue();
+                float realValue = param->getNormalisableRange().convertFrom0to1(defaultValue);
+                sidechainControls.lpfOrderButton.setToggleState(realValue >= 0.5f, juce::sendNotificationSync);
+            }
             
             // Reactivar undo después carga de preset
             isLoadingPreset = false;
@@ -3082,14 +3108,14 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
         if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v0.9.1 beta\nPlugin de audio open source\nClick para créditos");
         if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
-        if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 50%");
+        if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 100%");
         if (key == "drywet") return JUCE_UTF8("DRY/WET: mezcla final entre señal original y procesada\nControl de balance entrada/salida\nRango: 0 a 100% | Por defecto: 100%");
         if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: retardo para evitar overshooting\nReporta latencia al host\nRango: 0 a 10 ms | Por defecto: 0 ms");
         if (key == "clip") return JUCE_UTF8("SOFT CLIP: limitador suave de salida\nPreviene saturación con distorsión armónica\nRango: 0/OFF a 100% | Por defecto: OFF");
         if (key == "attack") return JUCE_UTF8("ATTACK: tiempo para alcanzar máxima ganancia/atenuación\nVelocidad de respuesta\nRango: 0 a 250 ms | Por defecto: 0 ms");
         if (key == "release") return JUCE_UTF8("RELEASE: tiempo de recuperación\nPermite valores extremos para efectos creativos\nRango: 0.1 a 350 ms | Por defecto: 60 ms");
         if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes de que comience release\nMantiene la ganancia/atenuación por un período\nRango: 0 a 250 ms | Por defecto: 10 ms");
-        if (key == "dmode") return JUCE_UTF8("DMODE: modo de escucha solo delta (TRANS/SUST)\nConmuta cuando Delta está activo entre:s\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
+        if (key == "dmode") return JUCE_UTF8("DMODE: modo de escucha solo delta (TRANS/SUST)\nConmuta cuando Delta está activo entre:\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
         if (key == "delta") return JUCE_UTF8("SOLO DELTA: escucha solo la ganancia/reducción aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
         if (key == "trim") return JUCE_UTF8("TRIM INPUT: ganancia de entrada del procesador\nAjusta el nivel antes del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
         if (key == "makeup") return JUCE_UTF8("MAKEUP: ganancia de salida manual\nAjusta el nivel final después del procesamiento\nRango: -12 a +12 dB | Por defecto: 0 dB");
@@ -3124,7 +3150,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
 	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v0.9.1 beta\nOpen source audio plugin\nClick for credits");
 	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
-	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 50%");
+	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 100%");
 	    if (key == "drywet") return JUCE_UTF8("DRY/WET: final mix between original and processed signal\nInput/output balance control\nRange: 0 to 100% | Default: 100%");
 	    if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: delay to prevent overshooting\nReports latency to host\nRange: 0 to 10 ms | Default: 0 ms");
 	    if (key == "clip") return JUCE_UTF8("SOFT CLIP: soft output limiter\nPrevents clipping with harmonic distortion\nRange: 0/OFF to 100% | Default: OFF");
@@ -3433,9 +3459,9 @@ int JCBTransientAudioProcessorEditor::getControlParameterIndex(juce::Component& 
     juce::String parameterID;
     
     // Perillas Superiores Izquierdas (threshold, ratio, knee)
-    if (&control == &leftTopKnobs.attackSlider) parameterID = "b_THD";
-    else if (&control == &leftTopKnobs.sustainSlider) parameterID = "c_RATIO";
-    else if (&control == &leftTopKnobs.sensSlider) parameterID = "q_KNEE";
+    if (&control == &leftTopKnobs.attackSlider) parameterID = "b_ATTACK_GAIN";
+    else if (&control == &leftTopKnobs.sustainSlider) parameterID = "c_SUSTAIN_GAIN";
+    else if (&control == &leftTopKnobs.sensSlider) parameterID = "q_SENSITIVITY";
     
     // Perillas Inferiores Izquierdas (drywet, lookahead, clip, autogain)
     else if (&control == &leftBottomKnobs.drywetSlider) parameterID = "o_DRYWET";
