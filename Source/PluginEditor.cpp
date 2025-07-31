@@ -3358,10 +3358,9 @@ void JCBTransientAudioProcessorEditor::initializeCodeContentCache()
     std::vector<CodeMapping> mappings = {
         {"TRIM IN", BinaryData::InputTrim_txt, BinaryData::InputTrim_txtSize},
         {"TRIM SC", BinaryData::InputTrim_txt, BinaryData::InputTrim_txtSize},
-        {"LOOKAHEAD", BinaryData::Output_txt, BinaryData::Output_txtSize},
+        {"LOOKAHEAD", BinaryData::InputTrim_txt, BinaryData::InputTrim_txtSize},
         {"FILTERS", BinaryData::Filters_txt, BinaryData::Filters_txtSize},
-        {"DETECTOR", BinaryData::Detector_txt, BinaryData::Detector_txtSize},
-        {"GAIN CALC", BinaryData::GainCalc_txt, BinaryData::GainCalc_txtSize},
+        {"DETECTOR+GAIN CALC", BinaryData::DetectorGainCalc_txt, BinaryData::DetectorGainCalc_txtSize},
         {"GAIN CORE", BinaryData::GainCore_txt, BinaryData::GainCore_txtSize},
         {"MAKEUP", BinaryData::Output_txt, BinaryData::Output_txtSize},
         {"PARALLEL", BinaryData::Output_txt, BinaryData::Output_txtSize},

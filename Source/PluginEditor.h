@@ -457,12 +457,10 @@ private:
                 
                 // Procesamiento
                 {"FILTERS", 0.335f, 0.762f, 0.065f, 0.238f},
-                {"DETECTOR", 0.417f, 0.661f, 0.090f, 0.434f},
-                {"GAIN CALC", 0.531f, 0.750f, 0.100f, 0.262f},
+                {"DETECTOR+GAIN CALC", 0.417f, 0.661f, 0.214f, 0.434f},
                 {"APPLY", 0.534f, 0.357f, 0.094f, 0.214f},
                 
                 // Salida
-                {"MAKEUP", 0.653f, 0.363f, 0.090f, 0.202f},
                 {"PARALLEL", 0.767f, 0.363f, 0.090f, 0.202f},
                 {"OUTPUT", 0.873f, 0.369f, 0.090f, 0.190f},
                 
@@ -679,15 +677,12 @@ private:
                 // Procesamiento principal
                 {"LOOKAHEAD", 177.8f, 16.7f, 416.7f, 13.9f},
                 {"FILTERS", 192.8f, 100.0f, 52.8f, 69.4f},
-                {"DETECTOR", 250.0f, 100.0f, 59.4f, 69.4f},
-                {"GAIN CALC", 316.1f, 100.0f, 55.6f, 69.4f},
+                {"DETECTOR+GAIN CALC", 250.0f, 100.0f, 121.7f, 69.4f},
                 {"GAIN CORE", 322.2f, 50.0f, 44.4f, 41.7f},
                 
                 // Sección de salida
-                {"MAKEUP", 468.0f, 54.4f, 50.4f, 33.3f},
                 //{"PARALLEL", 461.1f, 54.4f, 76.1f, 33.3f},
-                {"OUTPUT", 540.0f, 54.4f, 82.2f, 33.3f},
-                {"DELTA", 519.4f, 115.6f, 47.8f, 29.4f}
+                {"OUTPUT", 540.0f, 54.4f, 82.2f, 33.3f}
             };
             
             clickableAreasCached = true;
@@ -703,10 +698,8 @@ private:
             // Blanco: Filtros sidechain (HPF, LPF)
             // Gris: Controles de nivel (trim)
             
-            if (blockName == "DETECTOR")
-                return juce::Colour(0xFF1DB954);  // Verde Spotify (parámetros ATK, REL, HOLD, REACT, SMO)
-            else if (blockName == "GAIN CALC")
-                return DarkTheme::accentSecondary;  // Púrpura (parámetros THD, RATIO, KNEE, RANGE)
+            if (blockName == "DETECTOR+GAIN CALC")
+                return juce::Colour(0xFF1DB954);  // Verde Spotify (parámetros ATK, REL, HOLD, REACT, SMO + THD, RATIO, KNEE, RANGE)
             else if (blockName == "GAIN CORE" || blockName == "MAKEUP" || blockName == "OUTPUT" || blockName == "LOOKAHEAD")
                 return DarkTheme::accent;  // Azul (procesamiento core, salida, temporal)
             else if (blockName == "FILTERS")
@@ -736,8 +729,8 @@ private:
                     auto scaledBounds = owner.getScaledBounds(area.x, area.y, area.w, area.h);
                     juce::Rectangle<float> baseRect = scaledBounds.toFloat();
                     
-                    // Efecto glow de dos capas con color dinámico según el bloque
-                    juce::Colour blockColor = getBlockColor(hoveredBlockName);
+                    // Efecto glow blanco uniforme para todos los bloques
+                    juce::Colour blockColor = juce::Colours::white;
                     
                     // Capa exterior - glow más amplio y sutil
                     juce::Rectangle<float> outerGlow = baseRect.expanded(12.0f);

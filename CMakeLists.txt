@@ -130,8 +130,7 @@ juce_add_binary_data(JCBTransient_BinaryData
         Assets/code/InputTrim.txt
         Assets/code/GainCore.txt
         Assets/code/Filters.txt
-        Assets/code/Detector.txt
-        Assets/code/GainCalc.txt
+        Assets/code/Detector+GainCalc.txt
         Assets/code/Output.txt
         # Presets de fábrica
         Assets/FactoryPresets/Sustainer.preset

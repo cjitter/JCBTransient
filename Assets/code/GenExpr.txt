@@ -1,6 +1,5 @@
-
 // =============================================================================
-// PARÁMETROS DEL EXPANSOR
+// PARÁMETROS DEL TRANSIENT DESIGNER
 // =============================================================================
 
 // Parámetros principales
@@ -11,14 +10,12 @@ Param c_SUSTAIN_GAIN(0, min=-18, default=0, max=18);  // Sustain enhancement/red
 
 Param q_SENSITIVITY(0.5, min=0, default=0.5, max=1);  // Detection sensitivity (0-1)
 
-Param d_ATK(0.1, min=0.1, default=1, max=250);
-Param e_REL(1, min=1, default=10, max=500);
-Param f_HOLD(0, min=0, default=0, max=500);
+Param d_ATK(min=0, default=1, max=150);
+Param f_HOLD(min=0, default=0, max=250);
+Param e_REL(min=0.1, default=60, max=350);
 
 Param i_MAKEUP(-12, min=-12, default=0, max=12);      // Makeup gain (dB)
-//Param h_RANGE(-20, min=-100, default=-20, max=0);      // Range width (dB) - para expansor
 
-Param g_REACT(0, min=0, default=0, max=1);            // Peak/RMS mix (0=Peak, 1=RMS)
 Param z_SMOOTH(0, min=0, default=0, max=1);           // Extra smoothing amount
 
 // Filtros de sidechain
@@ -37,7 +34,7 @@ Param m_SOLOSC(0, min=0, default=0, max=1);           // Solo sidechain signal
 Param o_DRYWET(0, min=0, default=1, max=1);           // Dry/Wet mix (0=Dry, 1=Wet)
 
 Param v_DELTA(0, min=0, default=0, max=1);            // Delta mode (difference signal)
-Param h_DELTAMODE(0, min=0, default=0, max=2);     // Delta Mode: 0=Attack, 1=Both, 2=Sustain
+Param h_DELTAMODE(0, min=0, default=0, max=2);        // Delta Mode: 0=Attack, 1=Both, 2=Sustain
 
 // Características avanzadas
 Param n_LOOKAHEAD(0, min=0, default=0, max=10);       // Lookahead time (ms)
@@ -51,17 +48,19 @@ Param p_BYPASS(0, min=0, default=0, max=1);           // Bypass switch
 // HISTORIAS Y DELAYS
 // =============================================================================
 
-// Historias para detección de transientes (usadas en detectTransientEnhanced)
+// Historias para detección de transientes
 History envelopeHistory(0);           // Envolvente anterior
 History transientSmoothHistory(0);    // Suavizado de detección
 History diffHistory1(0);              // Para filtro diferenciador
 History diffHistory2(0);              // Para suavizado diferenciador
 
-// Historias para Transient Designer (NUEVAS)
+// Historias para Transient Designer
 History attackGainHistory(0);          // Para attack gain smoothing
 History sustainGainHistory(0);         // Para sustain gain smoothing
 History sensitivityHistory(0);         // Para sensitivity smoothing
 
+// Historia para plusequals del HOLD
+History holdCounterPlusEquals(0);      // Contador persistente tipo plusequals
 
 History deltaModeHistory(0);           // Para delta mode amount
 History makeupGainHistory(0);          // Para makeup gain amount
@@ -71,16 +70,16 @@ History keyMixHistory(0);              // Para key input mix
 History dryWetMixHistory(0);           // Para dry/wet mix
 History trimHistory(0);                // Para input trim gain
 History sidechainTrimHistory(0);       // Para sidechain trim gain
-History rangeHistory(0);               // Para range width (en lugar de kneeHistory)
-History reactHistory(0);              // Para peak/RMS mix
-History smoothAmountHistory(0);       // Para extra smoothing
-History lookaheadHistory(0);          // Para lookahead (con factor especial)
-History hpfFreqHistory(0);            // Para HPF frequency
-History lpfFreqHistory(0);            // Para LPF frequency
-History scEnableHistory(0);           // Para sidechain filter enable
-History softclipHistory(0);           // Para softclip amount
-History atkHistory(0);                // Para attack time
-History relHistory(0);                // Para release time
+History rangeHistory(0);               // Para range width
+History smoothAmountHistory(0);        // Para extra smoothing
+History lookaheadHistory(0);           // Para lookahead (con factor especial)
+History hpfFreqHistory(0);             // Para HPF frequency
+History lpfFreqHistory(0);             // Para LPF frequency
+History scEnableHistory(0);            // Para sidechain filter enable
+History softclipHistory(0);            // Para softclip amount
+History atkHistory(0);                 // Para attack time
+History relHistory(0);                 // Para release time
+History holdHistory(0);                // Para hold time smoothing
 
 // Historias para filtros de sidechain
 History lpfHistory1(0);                // LPF stage 1 input delay
@@ -123,9 +122,6 @@ History hpfHistory16(0);               // HPF stage 4 output z^-2
 History hpfOrderHistory(0);            // Para suavizar cambio de orden HPF
 History lpfOrderHistory(0);            // Para suavizar cambio de orden LPF
 
-// Nueva historia para detección de transientes (auto-release simplificado)
-//History transientDetector(0);          // Detector de transientes acumulado
-
 // Delays de lookahead (25ms a 48kHz = 1200 muestras)
 Delay leftOutputDelay(0.025*samplerate);   // Delay señal izquierda para compresión
 Delay rightOutputDelay(0.025*samplerate);  // Delay señal derecha para compresión
@@ -138,17 +134,10 @@ Delay sidechainWriteDelay(0.025*samplerate); // Delay para escritura de sidechai
 // VARIABLES DE DETECCIÓN DE ENVOLVENTE
 // =============================================================================
 
-// RMS Detection Buffer
-Delay rmsDelay(500);                   // Circular buffer para cálculo RMS (500 muestras)
-History rmsSum(0);                     // Suma acumulada para RMS
-
-//History prevEnvelope(0);               // Envolvente anterior para auto-release
-
 // Sharp Detector (Algoritmo 0) - Respuesta rápida
 History peakEnvSharp(0);               // Detector de picos rápido
 History releaseHistSharp(0);           // Historia de release para sharp
 History attackHistSharp(0);            // Historia de attack para sharp
-History extraSmoothHistSharp(0);       // Extra smoothing para sharp
 
 // Gain Reduction Smoothing
 History reductionHistLeft(0);          // Suavizado de gain reduction canal L
@@ -158,18 +147,20 @@ History reductionHistRight(0);         // Suavizado de gain reduction canal R
 History held_peak_sharp(0);      // Nivel pico mantenido durante hold
 History hold_counter_sharp(0);   // Contador de samples en hold
 
+History rmsExpHistory(0);  // Para RMS exponencial
+
+History smoothFilterHistory(0);  // Para el filtro paso bajo de SMOOTH
+
 // =============================================================================
 // VARIABLES DE SALIDA Y CONSTANTES
 // =============================================================================
 
-debug_transient_amount = 0;  // AGREGAR
+debug_transient_amount = 0;
 
 // Variables globales para debug
 debug_function_called = 0;
 debug_envelope_linear = 0;
 debug_total_gain = 0;
-
-// Variables globales para debug
 debug_diff_value = 0;
 debug_transient_value = 0;
 
@@ -190,15 +181,12 @@ LOOKAHEAD_SMOOTH_FACTOR = 0.9999;      // Factor ultra lento para lookahead
 
 // PROCESAMIENTO PRINCIPAL
 
-
 // =============================================================================
 // SMOOTHING DE PARÁMETROS - Filtro de primer orden para evitar clicks
 // =============================================================================
 // Implementación: y[n] = a * x[n] + (1-a) * y[n-1]
 // Donde: a = SMOOTH_PARAM_FACTOR (0.001), (1-a) = SMOOTH_HISTORY_FACTOR (0.999)
 // Resultado: Suavizado exponencial con tiempo de respuesta ~1000 muestras
-
-// Parallel Mix Amount - Cantidad de compresión paralela
 
 // Delta Mode Amount - Cantidad de señal diferencia (experimental)
 smoothDeltaMode = (deltaModeHistory * SMOOTH_HISTORY_FACTOR) + (v_DELTA * SMOOTH_PARAM_FACTOR);
@@ -229,9 +217,6 @@ sensitivityHistoryNext = fixdenorm(smoothSensitivity);
 deltaBypassValue = int(0);  // Valor para forzar auto gain y parallel a 0
 deltaWetValue = int(1);     // Valor para forzar dry/wet a 100% wet
 
-// Aplicar bypass condicional basado en DELTA
-//effectiveAutoGain = mix(smoothAutoGain, deltaBypassValue, smoothDeltaMode);
-
 // Filter Order Smoothing - Suavizado de orden de filtros
 smoothHpfOrder = (hpfOrderHistory * SMOOTH_HISTORY_FACTOR) + (j_HPFORDER * SMOOTH_PARAM_FACTOR);
 hpfOrderHistoryNext = fixdenorm(smoothHpfOrder);
@@ -261,10 +246,6 @@ else {
 smoothRange = (rangeHistory * SMOOTH_HISTORY_FACTOR) + (h_DELTAMODE * SMOOTH_PARAM_FACTOR);
 rangeHistoryNext = fixdenorm(smoothRange);
 
-// React (Peak/RMS) Smoothing
-smoothReact = (reactHistory * SMOOTH_HISTORY_FACTOR) + (g_REACT * SMOOTH_PARAM_FACTOR);
-reactHistoryNext = fixdenorm(smoothReact);
-
 // Extra Smooth Amount Smoothing
 smoothSmoothAmount = (smoothAmountHistory * SMOOTH_HISTORY_FACTOR) + (z_SMOOTH * SMOOTH_PARAM_FACTOR);
 smoothAmountHistoryNext = fixdenorm(smoothSmoothAmount);
@@ -276,6 +257,10 @@ atkHistoryNext = fixdenorm(smoothAttack);
 // Release Time Smoothing
 smoothRelease = (relHistory * SMOOTH_HISTORY_FACTOR) + (e_REL * SMOOTH_PARAM_FACTOR);
 relHistoryNext = fixdenorm(smoothRelease);
+
+// Hold Time Smoothing
+smoothHold = (holdHistory * SMOOTH_HISTORY_FACTOR) + (f_HOLD * SMOOTH_PARAM_FACTOR);
+holdHistoryNext = fixdenorm(smoothHold);
 
 // HPF Frequency Smoothing
 smoothHpfFreq = (hpfFreqHistory * SMOOTH_HISTORY_FACTOR) + (j_HPF * SMOOTH_PARAM_FACTOR);
@@ -404,10 +389,6 @@ keyMixedSignal = mix(mainSignalMono, sidechainSignalMono, smoothKeyMix);
 
 // Control params asignados directamente
 ONSIDECHAIN = smoothScEnable;
-REACT = smoothReact;
-
-//AUTO_RELEASE = s_AUTORELEASE;  // Directo, sin SPEED
-
 EXTRA_SMOOTH = smoothSmoothAmount;
 
 // =============================================================================
@@ -608,9 +589,8 @@ sidechainProcessedSignal = mix(lpfMixedSignal, hpfFinalSignal, ONSIDECHAIN);
 sidechainDetectionSignal = sidechainProcessedSignal;
 
 // =============================================================================
-// DETECCIÓN DE ENVOLVENTE - Sistema 1 algoritmo sharp
+// DETECCIÓN DE ENVOLVENTE - SHARP DETECTOR CON HOLD CORRECTO
 // =============================================================================
-// Los algoritmos y su hibridación han sido elegidos empíricamente por oído
 
 // Detección de envolvente - Preparación de coeficientes
 attack_ms = max(0.05, smoothAttack);
@@ -618,157 +598,130 @@ release_ms = max(0.1, smoothRelease);
 attack_coeff = exp(-1 / ((((attack_ms * samplerate)) * 0.001)));
 release_coeff = exp(-1 / ((((release_ms * samplerate)) * 0.001)));
 
-// =============================================================================
-// RMS SHARP (para ALGO 0) - Sliding RMS con ventana corta
-// =============================================================================
-rms_window = max(1, floor(25 * (samplerate / 48000)));  // Escalar ventana por SR
-rms_window_inv = 1 / rms_window;                        // Precalcular inverso
-input_squared = sidechainDetectionSignal * sidechainDetectionSignal;
-oldest_sq = rmsDelay.read(rms_window, interp="none");   // Leer muestra más antigua
-rms_sum_new = ((input_squared + rmsSum)) - oldest_sq;   // Cálculo incremental
-rms_sum_clipped = max(0, rms_sum_new);                  // Evitar valores negativos
-rms_value_sharp = sqrt(rms_sum_clipped * rms_window_inv); // RMS final
-rmsSum = rms_sum_clipped;                               // Actualizar suma
-rmsDelay.write(input_squared);                          // Escribir nueva muestra
+// Usar los coeficientes originales sin modificación
+attack_coeff_modified = attack_coeff;
+release_coeff_modified = release_coeff;
 
-// =============================================================================
-// ALGORITMO 0: SHARP DETECTOR - Respuesta rápida y precisa CON HOLD
-// =============================================================================
+// SHARP DETECTOR - Valores absolutos
 peakEnvSharp = abs(sidechainDetectionSignal);
-env_mix_sharp = mix(peakEnvSharp, rms_value_sharp, REACT);
-release_env_175 = releaseHistSharp * release_coeff;
-env_post_release_176 = max(env_mix_sharp, release_env_175);
 
-// HOLD - Mantener el nivel por el tiempo especificado
-hold_samples = mstosamps(f_HOLD);
-hold_env_sharp = env_post_release_176;  // Por defecto usar el valor actual
+// Variables necesarias
+envelope_delta = 0;
+sensitivity_threshold = 0;
+sensitivity_scale = 0;
+transient_detected = 0;
+gate_open = 0;
+env_post_release = 0;
+release_env = 0;
+attack_env_sharp = 0;
+sharpEnvelopeFinal = 0;
 
-if(env_post_release_176 > held_peak_sharp) {
-    // La señal subió - actualizar pico y resetear contador
-    held_peak_sharp = env_post_release_176;
-    hold_counter_sharp = 0;
-    hold_env_sharp = held_peak_sharp;
+// HOLD - Implementación con plusequals (como el código simplificado)
+hold_samples = mstosamps(smoothHold);
+
+// Detectar cambios significativos (delta)
+envelope_delta = abs(peakEnvSharp - releaseHistSharp);
+
+// Escalar sensibilidad de 0.01 a 0.5
+sensitivity_scale = scale(smoothSensitivity, 0, 1, 0.01, 0.5);
+sensitivity_threshold = sensitivity_scale;
+
+// comparador que detecta transiente
+transient_detected = envelope_delta > sensitivity_threshold ? 1 : 0;
+
+// Lógica plusequals - incrementar contador cuando hay transiente
+holdCounterPlusEqualsNext = holdCounterPlusEquals;
+if(transient_detected > 0) {
+    holdCounterPlusEqualsNext = 0;  // Reset counter on transient
 }
-else {
-    // La señal bajó - verificar si estamos en hold
-    hold_counter_sharp = min(hold_counter_sharp + 1, hold_samples);
-    if(hold_counter_sharp < hold_samples) {
-        // Aún en hold - mantener el nivel pico Y congelar el release
-        hold_env_sharp = held_peak_sharp;
-        env_post_release_176 = held_peak_sharp;  // IMPORTANTE: Congelar el release
-    }
-    else {
-        // Hold terminado - permitir que caiga
-        hold_env_sharp = env_post_release_176;
-        held_peak_sharp = env_post_release_176;
-    }
-}
-
-// Aplicar attack usando el valor con hold
-attack_env_177 = attackHistSharp * attack_coeff;
-attack_mix_178 = (((1 - attack_coeff)) * hold_env_sharp) + (attack_coeff * attack_env_177);
-sharpEnvelopeFinal = max(attack_mix_178, 1e-06);
-releaseHistSharp = fixdenorm(env_post_release_176);
-attackHistSharp = fixdenorm(attack_mix_178);
-
-// =============================================================================
-// EXTRA SMOOTHING POST-DETECCIÓN - Suavizado adicional configurable
-// =============================================================================
-smooth_amount_shaped = pow(EXTRA_SMOOTH, 2.5);         // Curva exponencial para control musical
-smooth_time_ms = mix(0.001, 100, smooth_amount_shaped); // Mapeo a rango temporal
-extra_smooth_coeff = exp(-1 / ((((smooth_time_ms * samplerate)) * 0.001))); // Coeficiente de filtro
-
-// Algoritmo 0 - Salida en dB con smoothing opcional
-expr_algo0 = atodb(sharpEnvelopeFinal);               // Conversión a dB base
-if(EXTRA_SMOOTH >= 0.001) {                           // Solo si hay smoothing significativo
-    extraSmoothedSharpEnv = (extraSmoothHistSharp * extra_smooth_coeff) + (sharpEnvelopeFinal * ((1 - extra_smooth_coeff)));
-    extraSmoothHistSharp = fixdenorm(extraSmoothedSharpEnv);
-    expr_algo0 = atodb(max(extraSmoothedSharpEnv, 1e-06)); // Evitar log(0)
+else if(holdCounterPlusEquals < hold_samples) {
+    holdCounterPlusEqualsNext = holdCounterPlusEquals + 1;
 }
 
-// =============================================================================
-// SELECTOR Y MORPHING DE ALGORITMOS - Transición continua sin saltos
-// =============================================================================
+// Gate está abierto si: hay transiente O aún en hold
+still_in_hold = holdCounterPlusEquals < hold_samples ? 1 : 0;
+gate_open = (transient_detected || still_in_hold) ? 1 : 0;
 
-// Usar directamente la salida del algoritmo Sharp
-envelopeDetectorOutput = expr_algo0;  // Solo Sharp
-finalEnvelopeDb = envelopeDetectorOutput;
+// Aplicar envelope follower con gate
+if(gate_open > 0) {
+    // Gate abierto - usar attack/release normal
+    release_env = releaseHistSharp * release_coeff_modified;
+    env_post_release = max(peakEnvSharp, release_env);
+    attack_env_sharp = attackHistSharp * attack_coeff_modified;
+    sharpEnvelopeFinal = ((1 - attack_coeff_modified) * env_post_release) + (attack_coeff_modified * attack_env_sharp);
+} else {
+    // Gate cerrado - solo release
+    sharpEnvelopeFinal = attackHistSharp * release_coeff_modified;
+}
+
+sharpEnvelopeFinal = max(sharpEnvelopeFinal, 1e-06);
+
+// Actualizar historias
+releaseHistSharp = fixdenorm(env_post_release);
+attackHistSharp = fixdenorm(sharpEnvelopeFinal);
+
+// SMOOTH - Filtro paso bajo agresivo en el envelope
+if(z_SMOOTH > 0.01) {
+    // Coeficiente directo: 0 = sin smooth, 1 = máximo smooth
+    smooth_coeff = z_SMOOTH * 0.99;  // Hasta 99% del valor anterior
+    
+    // Mezclar con historia dedicada para SMOOTH
+    sharpEnvelopeFinal = (smoothFilterHistory * smooth_coeff) + (sharpEnvelopeFinal * (1 - smooth_coeff));
+}
+
+// Actualizar la historia del filtro SMOOTH
+smoothFilterHistoryNext = sharpEnvelopeFinal;
+
+// Convertir a dB para procesamiento
+finalEnvelopeDb = atodb(sharpEnvelopeFinal);
+envelope_linear = dbtoa(finalEnvelopeDb);
+
+// =============================================================================
+// DETECCIÓN DE TRANSIENTES PARA ATTACK/SUSTAIN
+// =============================================================================
+// Usar el gate_open del detector Sharp directamente
+attack_env = gate_open;  // 1 cuando hay transiente, 0 cuando no
+
+// Declarar variable antes de usarla
+attack_env_smooth = 0;
+
+// Suavizar la detección para evitar cambios abruptos
+smo_factor = 1 + (z_SMOOTH * 4);  // de 1x (sin efecto) a 5x (máxima suavidad)
+detection_attack_coeff = exp(-1 / (max(0.5, smoothAttack * 0.1) * samplerate * 0.001 * smo_factor));
+detection_release_coeff = exp(-1 / (max(5, smoothRelease * 0.5) * samplerate * 0.001 * smo_factor));
+
+if(attack_env > 0.5) {
+    attack_env_smooth = (transientSmoothHistory * detection_attack_coeff) + (attack_env * (1 - detection_attack_coeff));
+} else {
+    attack_env_smooth = (transientSmoothHistory * detection_release_coeff) + (attack_env * (1 - detection_release_coeff));
+}
+
+transientSmoothHistoryNext = fixdenorm(attack_env_smooth);
+
+// Limitar y crear envolvente de sustain
+attack_env = min(attack_env_smooth, 1);
+sustain_env = 1 - pow(min(attack_env * 1.5, 1), 0.7);
 
 // =============================================================================
 // COMPENSACIÓN DE GANANCIA PARA SOLO SIDECHAIN - Evitar saltos abruptos
 // =============================================================================
-unitaryReference = int(1);                           // Valor de referencia unitario
+unitaryReference = int(1);                           		   // Valor de referencia unitario
 trimCompensationFactor = unitaryReference / trimGainReference; // Factor de compensación inverso al trim
 sidechainTrimCompensated = sidechainDetectionSignal * trimCompensationFactor; // Aplicar compensación de trim
 normalizedSidechainSignal = sidechainTrimCompensated; // Señal compensada para monitoreo
 
 // =============================================================================
-// PROCESAMIENTO DE SALIDA - Canal Izquierdo - VERSIÓN COMPLETA MEJORADA
+// PROCESAMIENTO DE SALIDA - Canal Izquierdo
 // =============================================================================
-
-// DETECCIÓN DE TRANSIENTES MEJORADA
-envelope_linear = dbtoa(finalEnvelopeDb);
-
-// Derivada con suavizado previo para reducir ruido
-//envelope_smoothed = (envelopeHistory * 0.9) + (envelope_linear * 0.1);
-
-// Suavizado dinámico del envelope basado en EXTRA_SMOOTH
-//envelope_smooth_amount = mix(0.05, 0.95, smoothSmoothAmount);  // 5% a 95% de smoothing
-
-// envelope_smooth_amount = mix(0.001, 0.01, smoothSmoothAmount);  // la que más me convence
-
-// prueba exponencial (más musical)
-smooth_shaped = pow(smoothSmoothAmount, 2);  // Curva cuadrática
-envelope_smooth_amount = mix(0.05, 0.7, smooth_shaped);
-// de momento me quedo con esta
-
-envelope_smoothed = (envelopeHistory * envelope_smooth_amount) + (envelope_linear * (1 - envelope_smooth_amount));
-envelope_change = envelope_smoothed - envelopeHistory;
-envelopeHistory = envelope_smoothed;
-
-// Rectificar y escalar la derivada con SENSITIVITY - RANGO AMPLIADO
-// 0 = muy selectivo (solo picos fuertes), 1 = muy sensible (detecta todo)
-sensitivity_scale = scale(smoothSensitivity, 0, 1, 1, 500);  // 1x a 20x (más musical)
-positive_change = max(0, envelope_change * sensitivity_scale);
-
-// Ajustar también el umbral según sensitivity para mejor control
-// Con baja sensitivity, umbral más alto (más selectivo)
-threshold_scale = scale(smoothSensitivity, 0, 1, 0.05, 0.001);
-threshold = threshold_scale + (envelope_smoothed * 0.01);
-is_attack = positive_change > threshold ? 1 : 0;
-
-// Suavizado dinámico basado en los parámetros de timing
-detection_attack_coeff = exp(-1 / (max(0.5, smoothAttack * 0.1) * samplerate * 0.001));
-detection_release_coeff = exp(-1 / (max(5, smoothRelease * 0.5) * samplerate * 0.001));
-
-// Declarar attack_env e inicializar
-attack_env = 0;
-
-if(is_attack > 0.5) {
-    attack_env = (transientSmoothHistory * detection_attack_coeff) + (is_attack * (1 - detection_attack_coeff));
-} else {
-    attack_env = (transientSmoothHistory * detection_release_coeff) + (is_attack * (1 - detection_release_coeff));
-}
-
-transientSmoothHistory = attack_env;
-
-// Limitar envolvente de attack para evitar sobre-modulación
-attack_env = min(attack_env, 1);
-
-// ENVOLVENTE DE SUSTAIN MEJORADA - Más independiente
-// Sustain solo activo cuando NO hay transiente
-//sustain_active = 1 - min(attack_env * 2, 1);  // Corte más agresivo
-sustain_active = 1 - pow(min(attack_env * 1.5, 1), 0.7);  // Curva más suave y musical
-sustain_env = sustain_active;
 
 // APLICAR GANANCIAS CON CURVA SUAVE
 // Convertir controles a factores lineales con curva
-attack_factor = pow(dbtoa(smoothAttackGain), 0.7);  // con 0.3 - 0.5 - 0.825 1.0
-sustain_factor = pow(dbtoa(smoothSustainGain), 0.7);
+attack_factor = pow(dbtoa(smoothAttackGain), 0.8);
+sustain_factor = pow(dbtoa(smoothSustainGain), 0.8);
 
 // Calcular ganancia total con mezcla ponderada
-gain_from_attack = mix(1, attack_factor, attack_env);
-gain_from_sustain = mix(1, sustain_factor, sustain_env);
+gain_from_attack = mix(1, attack_factor, attack_env * smoothSensitivity);
+gain_from_sustain = mix(1, sustain_factor, sustain_env * smoothSensitivity);
 
 // Combinar ambas ganancias
 gain_total = gain_from_attack * gain_from_sustain;
@@ -788,11 +741,11 @@ if(delta_control > 0.01) {
     
     // Calcular las tres posibles señales delta
     // 1. Attack only
-    gain_attack_only = mix(1, attack_factor, attack_env);
+    gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
     delta_attack_only = (leftDelayedForCompression * gain_attack_only) - leftDelayedForCompression;
     
     // 2. Sustain only
-    gain_sustain_only = mix(1, sustain_factor, sustain_env);
+    gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
     delta_sustain_only = (leftDelayedForCompression * gain_sustain_only) - leftDelayedForCompression;
     
     // 3. Both (completo)
@@ -821,10 +774,7 @@ auto_makeup = reduction_smoothed * AUTO_MAKEUP_FACTOR;
 combined_makeup = auto_makeup + leftMakeupGain;
 
 final_makeup_db = leftMakeupGain;
-
-// Cuando DELTA está activo, forzar makeup a 0dB
-finalMakeupDbWithDelta = mix(final_makeup_db, 0, smoothDeltaMode);
-makeup_linear = dbtoa(finalMakeupDbWithDelta);
+makeup_linear = dbtoa(final_makeup_db);
 leftWithMakeup = leftWithDelta * makeup_linear;
 reductionHistLeft = fixdenorm(reduction_smoothed);
 
@@ -838,7 +788,7 @@ leftWithSidechain = mix(leftDryWetMixed, sidechainDelayedWrite, smoothSoloSidech
 // OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
 maxOutput = 0.989;
 saturationAmount = clamp(smoothSoftclip, 0, 1);
-effectiveSaturationAmount = mix(saturationAmount, 0, smoothDeltaMode);
+effectiveSaturationAmount = saturationAmount;
 
 // Saturación asimétrica para añadir color/calidez
 leftSaturated = 0;
@@ -875,11 +825,11 @@ if(rightDeltaControl > 0.01) {
     
     // Calcular las tres posibles señales delta
     // 1. Attack only
-    right_gain_attack_only = mix(1, attack_factor, attack_env);
+    right_gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
     right_delta_attack_only = (rightDelayedForCompression * right_gain_attack_only) - rightDelayedForCompression;
     
     // 2. Sustain only
-    right_gain_sustain_only = mix(1, sustain_factor, sustain_env);
+    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
     right_delta_sustain_only = (rightDelayedForCompression * right_gain_sustain_only) - rightDelayedForCompression;
     
     // 3. Both (completo)
@@ -908,10 +858,7 @@ rightAutoMakeup = rightReductionSmoothed * AUTO_MAKEUP_FACTOR;
 rightCombinedMakeup = rightAutoMakeup + rightMakeupGain;
 
 rightFinalMakeupDb = rightMakeupGain;
-
-// Cuando DELTA está activo, forzar makeup a 0dB
-rightFinalMakeupDbWithDelta = mix(rightFinalMakeupDb, 0, smoothDeltaMode);
-rightMakeupLinear = dbtoa(rightFinalMakeupDbWithDelta);
+rightMakeupLinear = dbtoa(rightFinalMakeupDb);
 rightWithMakeup = rightWithDelta * rightMakeupLinear;
 reductionHistRight = fixdenorm(rightReductionSmoothed);
 
@@ -924,7 +871,6 @@ rightWithSidechain = mix(rightDryWetMixed, sidechainDelayedTap, smoothSoloSidech
 
 // OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
 rightSaturationAmount = clamp(smoothSoftclip, 0, 1);
-rightEffectiveSaturationAmount = mix(rightSaturationAmount, 0, smoothDeltaMode);
 
 // Saturación asimétrica para añadir color/calidez
 rightSaturated = 0;
@@ -937,32 +883,40 @@ else {
 rightSaturated = clamp(rightSaturated, -maxOutput, maxOutput);
 
 // Mezclar señal original con saturada según el parámetro
-rightProcessedOutput = mix(rightWithSidechain, rightSaturated, rightEffectiveSaturationAmount);
+rightProcessedOutput = mix(rightWithSidechain, rightSaturated, rightSaturationAmount);
 rightFinalOutput = mix(rightDelayedForMixing, rightProcessedOutput, smoothBypassAmount);
+
 out2 = rightFinalOutput;
 
 // =============================================================================
-// GAIN REDUCTION OUTPUT - Medidor bipolar -1 a +1 para UI (escala lineal)
+// SALIDAS SEPARADAS - Visualización simétrica en dB
 // =============================================================================
-// Medidor intuitivo con escala lineal para mejor respuesta visual
 
-// Mapear ganancia lineal al rango -1 a +1
-// gain_total = 0.25 (-12dB) a 4.0 (+12dB), centro = 1.0
-gain_meter_bipolar = 0;
+// Declarar variables
+attack_gain_db = 0;
+attack_meter_db = 0;
+sustain_gain_db = 0;
+sustain_meter_db = 0;
 
-if(gain_total >= 1) {
-    // Amplificación: mapear 1-4 a 0-1
-    gain_meter_bipolar = (gain_total - 1) / 3;
+// SALIDA 3 - Attack en dB (simétrico)
+if(attack_env > 0.001) {
+    // Convertir la ganancia a dB para visualización simétrica
+    attack_gain_db = atodb(gain_from_attack);
+    attack_meter_db = attack_gain_db * attack_env;
 } else {
-    // Atenuación: mapear 0.25-1 a -1-0
-    gain_meter_bipolar = (gain_total - 1) / 0.75;
+    attack_meter_db = 0;
 }
+out3 = attack_meter_db / 18;  // Normalizar: ±18dB → ±1
 
-gain_meter_bipolar = clamp(gain_meter_bipolar, -1, 1);
-
-gainReductionMeter = mix(0, gain_meter_bipolar, bypassInverted);
-gainReductionOutput = gainReductionMeter;
-out3 = gainReductionOutput;
+// SALIDA 8 - Sustain en dB (simétrico)
+if(sustain_env > 0.001) {
+    // Convertir la ganancia a dB para visualización simétrica
+    sustain_gain_db = atodb(gain_from_sustain);
+    sustain_meter_db = sustain_gain_db * sustain_env;
+} else {
+    sustain_meter_db = 0;
+}
+out8 = sustain_meter_db / 18;  // Normalizar: ±18dB → ±1
 
 // =============================================================================
 // ACTUALIZACIÓN DE HISTORIAS PARA EL SIGUIENTE CICLO
@@ -971,9 +925,9 @@ out3 = gainReductionOutput;
 
 // Historias de smoothing de parámetros
 deltaModeHistory = deltaModeHistoryNext;
-attackGainHistory = attackGainHistoryNext;    // NUEVA
-sustainGainHistory = sustainGainHistoryNext;  // NUEVA
-sensitivityHistory = sensitivityHistoryNext;  // NUEVA
+attackGainHistory = attackGainHistoryNext;
+sustainGainHistory = sustainGainHistoryNext;
+sensitivityHistory = sensitivityHistoryNext;
 
 makeupGainHistory = makeupGainHistoryNext;
 soloSidechainHistory = soloSidechainHistoryNext;
@@ -985,7 +939,6 @@ sidechainTrimHistory = sidechainTrimHistoryNext;
 
 // Historias adicionales de smoothing
 rangeHistory = rangeHistoryNext;
-reactHistory = reactHistoryNext;
 smoothAmountHistory = smoothAmountHistoryNext;
 lookaheadHistory = lookaheadHistoryNext;
 hpfFreqHistory = hpfFreqHistoryNext;
@@ -994,6 +947,11 @@ scEnableHistory = scEnableHistoryNext;
 softclipHistory = softclipHistoryNext;
 atkHistory = atkHistoryNext;
 relHistory = relHistoryNext;
+holdHistory = holdHistoryNext;
+
+smoothFilterHistory = smoothFilterHistoryNext;
+
+transientSmoothHistory = transientSmoothHistoryNext;
 
 // Historias de filtros LPF (etapas 1-4)
 lpfHistory1 = lpfHistory1Next;
@@ -1035,7 +993,9 @@ hpfHistory16 = hpfHistory16Next;
 hpfOrderHistory = hpfOrderHistoryNext;
 lpfOrderHistory = lpfOrderHistoryNext;
 
+// Historia del contador plusequals para HOLD
+holdCounterPlusEquals = holdCounterPlusEqualsNext;
+
 // Delays de lookahead (escritura para el siguiente ciclo)
 sidechainWriteDelay.write(normalizedSidechainSignal);
 sidechainTapDelay.write(normalizedSidechainSignal);
-// Las escrituras de leftOutputDelay y rightOutputDelay se hacen ahora arriba con el trim
