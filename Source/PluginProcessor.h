@@ -18,6 +18,7 @@
 #include <mutex>
 #include <vector>
 #include <unordered_map>
+#include <atomic>
 
 // Archivos del proyecto
 #include "JCBTransient.h"
@@ -30,7 +31,8 @@ using namespace juce;
 //==============================================================================
 class JCBTransientAudioProcessor : public juce::AudioProcessor,
                                     public juce::AudioProcessorValueTreeState::Listener,
-                                    private juce::Timer
+                                    private juce::Timer,
+                                    private juce::AsyncUpdater
 {
 public:
     //==============================================================================
@@ -45,6 +47,7 @@ public:
     
     bool isBusesLayoutSupported(const juce::AudioProcessor::BusesLayout& layouts) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     
     //==============================================================================
     // Gestión del editor
@@ -166,6 +169,9 @@ public:
     // Acceso al estado de Gen~ (para sincronización directa)
     CommonState* getPluginState() const { return m_PluginState; }
     
+    // Estado del botón graphics para persistencia en presets
+    bool displayGraphicsEnvelopes{true};
+    
 private:
     //==============================================================================
     // UndoManager separado para GUI
@@ -278,6 +284,153 @@ private:
     ParameterState stateB;
     bool isStateA{true};
     
+    //==============================================================================
+    // // BYPASS COMPENSADO
+    // juce::AudioBuffer<float> bypassDelayBuffer;
+    // int bypassDelayWritePos { 0 };
+    // juce::SpinLock bypassDelayLock;
+    //
+    // // Suavizado de transición de bypass (para Pro Tools)
+    // juce::AudioBuffer<float> lastWetTail;  // cola del último bloque activo
+    // int   lastWetTailLen   { 0 };          // muestras válidas guardadas
+    // bool  wasHostBypassed  { false };      // estado del bloque anterior
+    // int   bypassFadeLen    { 128 };        // 32-64-128 recomendado
+    // int   bypassFadePos    { -1 };         // -1 = inactivo
+    //
+    // // Espejo del bypass del host
+    // std::atomic<bool> hostBypassMirror { false };
+    //
+    // // Helper para leer el parámetro de bypass del host
+    // inline bool isHostBypassed() const noexcept
+    // {
+    //     if (auto* p = getBypassParameter())
+    //         return p->getValue() >= 0.5f;
+    //     return false;
+    // }
+    //
+    // // LATENCIA SEGURA (message thread)
+    // std::atomic<int> pendingLatency { -1 };
+    // int currentLatency = 0;
+    //
+    // // LOOKAHEAD DEBOUNCE
+    // std::atomic<float>   stagedLookaheadMs { 0.0f };
+    // std::atomic<uint32_t> lastLAChangeMs   { 0 };
+    // std::atomic<bool>    laCommitPending   { false };
+    // int                  laDebounceMs      { 140 };
+    //
+    // // Offset intrínseco de Gen~ (0 ya que Gen~ está bien configurado)
+    // std::atomic<int> intrinsicGenOffset { 0 };
+    //
+    // // Helper: calcula latencia en muestras
+    // int computeLatencySamples (double sr) const
+    // {
+    //     if (sr <= 0.0) return 0;
+    //     float latMs = apvts.getRawParameterValue("n_LOOKAHEAD")->load();
+    //     if (! std::isfinite(latMs) || latMs < 0.0f) latMs = 0.0f;
+    //     const int base = juce::roundToInt (latMs * sr / 1000.0);
+    //     return juce::jmax (0, base + intrinsicGenOffset.load(std::memory_order_relaxed));
+    // }
+    //
+    // // Override de AsyncUpdater
+    // void handleAsyncUpdate() override;
+    //
+    // // Cachear índices de gen (evitar búsquedas por nombre)
+    // int genIdxLookahead { -1 };
+    // int genIdxBypass    { -1 };
+
+    // ==============================================================================
+    // SISTEMA DE BYPASS COMPENSADO
+    // ==============================================================================
+    
+    // --- Ring Buffer para compensación de latencia ---
+    juce::AudioBuffer<float> bypassDelayBuffer;  // Ring buffer circular para DRY compensado
+    int  bypassDelayWritePos { 0 };              // Posición de escritura actual en el ring
+    juce::SpinLock bypassDelayLock;              // Lock para thread-safety del ring buffer
+    int  bypassDelayCapacity { 0 };              // Capacidad fija preasignada (máximo lookahead)
+    int  dryPrimedSamples   { 0 };               // Contador de muestras válidas en el ring
+
+    // --- Scratch Buffers RT-safe ---
+    juce::AudioBuffer<float> scratchIn;          // Buffer temporal para entrada (2ch: L/R)
+    juce::AudioBuffer<float> scratchDry;         // Buffer temporal para DRY compensado (2ch: L/R)
+    int scratchCapacitySamples { 0 };            // Capacidad actual de los scratch buffers
+
+    // Helper: asegura capacidad de scratch sin allocations en audio thread
+    inline void ensureScratchCapacity (int numSamples)
+    {
+        if (numSamples > scratchCapacitySamples)
+        {
+            scratchIn.setSize (2, numSamples, false, false, true);
+            scratchDry.setSize(2, numSamples, false, false, true);
+            scratchIn.clear();
+            scratchDry.clear();
+            scratchCapacitySamples = numSamples;
+        }
+    }
+
+    // --- FSM de Bypass con Fade ---
+    enum class BypassState { Active, FadingToBypass, Bypassed, FadingToActive };
+    BypassState bypassState { BypassState::Active };  // Estado actual del bypass
+    int  bypassFadeLen { 384 };                       // Longitud del fade en samples (calculado de bypassFadeMs)
+    float bypassFadeMs { 7.0f };                      // Duración del fade en ms (7ms por defecto)
+    int  bypassFadePos { 0 };                         // Posición actual del fade (0 a bypassFadeLen)
+
+    // --- Control y sincronización ---
+    std::atomic<bool> hostBypassMirror { false };     // Espejo atómico del estado de bypass del host
+    bool lastWantsBypass { false };                   // Estado anterior para detección de flancos
+
+    // LATENCIA SEGURA (message thread)
+    std::atomic<int> pendingLatency { -1 };
+    int currentLatency = 0;
+
+    // LOOKAHEAD DEBOUNCE
+    std::atomic<float>    stagedLookaheadMs { 0.0f };
+    std::atomic<uint32_t> lastLAChangeMs   { 0 };
+    std::atomic<bool>     laCommitPending  { false };
+    int                   laDebounceMs     { 140 };
+
+    // Offset intrínseco de Gen~ (0 ya que Gen~ está bien configurado)
+    std::atomic<int> intrinsicGenOffset { 0 };
+
+    // Helper inline: calcula latencia en muestras
+    int computeLatencySamples (double sr) const
+    {
+        if (sr <= 0.0) return 0;
+        float latMs = apvts.getRawParameterValue("n_LOOKAHEAD")->load();
+        if (! std::isfinite(latMs) || latMs < 0.0f) latMs = 0.0f;
+        const int base = juce::roundToInt (latMs * sr / 1000.0f);
+        return juce::jmax (0, base + intrinsicGenOffset.load(std::memory_order_relaxed));
+    }
+
+    // Helper para leer el parámetro de bypass del host
+     inline bool isHostBypassed() const noexcept
+     {
+         if (auto* p = getBypassParameter())
+             return p->getValue() >= 0.5f;
+         return false;
+     }
+
+    // Override de AsyncUpdater
+    void handleAsyncUpdate() override;
+
+    // Cachear índices de gen
+    int genIdxLookahead { -1 };
+    int genIdxBypass    { -1 };
+
+
+    // DC-block para fades (opcional)
+    float dc_x1L = 0.0f, dc_y1L = 0.0f, dc_x1R = 0.0f, dc_y1R = 0.0f;
+    float dc_R   = 0.0f; // exp(-2*pi*fc/fs)
+    inline float dcBlock (float x, float& x1, float& y1) noexcept
+    {
+        const float y = x - x1 + dc_R * y1;
+        x1 = x; y1 = y;
+        return y;
+    }
+
+    // Punto común de proceso
+    void processBlockCommon(juce::AudioBuffer<float>& buffer, bool hostWantsBypass);
+
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JCBTransientAudioProcessor)
 };

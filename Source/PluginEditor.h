@@ -311,7 +311,7 @@ private:
     // Botones superiores junto a presets (y=15)
     struct TopButtons {
         juce::TextButton abStateButton{"A/B"};
-        juce::TextButton abCopyButton{"A→B"};
+        juce::TextButton abCopyButton{"A->B"};
     } topButtons;
     
     // Botón central inferior (y=163)  
@@ -351,7 +351,7 @@ private:
     //==========================================================================
     
     // Título y versión en la parte inferior (combinado como ExpansorGate)
-    juce::TextButton titleLink{"JCBComp v0.9.992 beta"};
+    juce::TextButton titleLink{"JCBTransient v0.9.2 beta"};
     
     // Imágenes de fondo
     juce::ImageComponent backgroundImage;
@@ -980,6 +980,9 @@ private:
     
     // Presets de fábrica
     juce::StringArray factoryPresetNames;
+    
+    // Mapeo de IDs del menú a nombres reales de preset
+    std::unordered_map<int, juce::String> presetIdToNameMap;
     
     // Operaciones de archivo
     std::unique_ptr<juce::FileChooser> fileChooser;

@@ -64,9 +64,9 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Verificar si el host es Logic Pro
     juce::PluginHostType hostInfo;
     if (hostInfo.isLogic()) {
-        titleText = "v0.9.1 beta";  // Solo versión para Logic Pro
+        titleText = "v0.9.2 beta";  // Solo versión para Logic Pro
     } else {
-        titleText = "JCBTransient v0.9.1 beta";  // Nombre completo para otros DAWs
+        titleText = "JCBTransient v0.9.2 beta";  // Nombre completo para otros DAWs
     }
     
     titleLink.setButtonText(titleText);
@@ -183,13 +183,17 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     transferDisplay.setSoloSidechain(sidechainControls.soloScButton.getToggleState());
     
     // Configurar estado inicial del botón run graphics basado en el processor
-    bool initialEnvelopeState = processor.getEnvelopeVisualEnabled();
-    // El estado del processor indica si las envolventes están visibles
-    // Si las envolventes están visibles, graphics debe estar OFF (false)
-    bool graphicsButtonState = !initialEnvelopeState;
-    transferDisplay.setEnvelopeVisible(initialEnvelopeState);
-    utilityButtons.runGraphicsButton.setToggleState(graphicsButtonState, juce::dontSendNotification);
+    // Usar el estado guardado del botón graphics del processor
+    bool graphicsButtonState = processor.displayGraphicsEnvelopes;
+    // Graphics ON (botón pulsado/azul) = envolventes VISIBLES (mostrar formas de onda en tiempo real)
+    // Graphics OFF (botón sin pulsar/transparente) = envolventes OCULTAS (mejor rendimiento)
+    // NOTA: El botón tiene su estado visual INVERTIDO en JUCE
+    // setToggleState(false) = se ve AZUL, setToggleState(true) = se ve TRANSPARENTE
+    bool initialEnvelopeState = graphicsButtonState; // El estado guardado
+    transferDisplay.setEnvelopeVisible(initialEnvelopeState); // true = visible
+    utilityButtons.runGraphicsButton.setToggleState(!graphicsButtonState, juce::dontSendNotification); // INVERTIR visual
     utilityButtons.runGraphicsButton.setButtonText("graphics");
+    processor.setEnvelopeVisualEnabled(initialEnvelopeState); // true = visible
     
     // Actualizar valores de sliders desde APVTS para evitar problemas al cargar sesión
     // Usar MessageManager::callAsync para ejecución thread-safe sin delay
@@ -232,6 +236,27 @@ JCBTransientAudioProcessorEditor::~JCBTransientAudioProcessorEditor()
     
     // Remover listener custom de DMODE
     processor.apvts.removeParameterListener("h_DELTAMODE", this);
+    
+    // CRÍTICO: Limpiar LookAndFeels de todos los componentes ANTES de destruir
+    // Esto previene assertion 82 en pluginval
+    // Sliders con sliderLAFBig
+    leftTopKnobs.attackSlider.setLookAndFeel(nullptr);
+    leftTopKnobs.sustainSlider.setLookAndFeel(nullptr);
+    leftTopKnobs.sensSlider.setLookAndFeel(nullptr);
+    leftBottomKnobs.drywetSlider.setLookAndFeel(nullptr);
+    leftBottomKnobs.lookaheadSlider.setLookAndFeel(nullptr);
+    leftBottomKnobs.clipSlider.setLookAndFeel(nullptr);
+    rightBottomKnobs.atkSlider.setLookAndFeel(nullptr);
+    rightBottomKnobs.relSlider.setLookAndFeel(nullptr);
+    rightBottomKnobs.holdSlider.setLookAndFeel(nullptr);
+    rightTopControls.smoothSlider.setLookAndFeel(nullptr);
+    sidechainControls.hpfSlider.setLookAndFeel(nullptr);
+    sidechainControls.lpfSlider.setLookAndFeel(nullptr);
+    
+    // Botones con smallButtonLAF
+    rightTopControls.dmodeButton.setLookAndFeel(nullptr);
+    leftTopKnobs.flipButton.setLookAndFeel(nullptr);
+    parameterButtons.deltaButton.setLookAndFeel(nullptr);
     
     setLookAndFeel(nullptr);
 }
@@ -616,6 +641,9 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
         // Actualizar output meters para usar gradient de entrada cuando bypass está activo
         outputMeterL.setBypassMode(bypassActive);
         outputMeterR.setBypassMode(bypassActive);
+        
+        // Marcar el preset como modificado cuando se pulsa bypass
+        handleParameterChange();
     }
     else if (button == &sidechainControls.scButton)
     {
@@ -646,49 +674,63 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
         // Actualizar transfer function display para estado SOLO SC
         bool soloActive = sidechainControls.soloScButton.getToggleState();
         transferDisplay.setSoloSidechain(soloActive);
+        
+        // Marcar el preset como modificado cuando se pulsa solo sc
+        handleParameterChange();
     }
     else if (button == &utilityButtons.runGraphicsButton)
     {
-        bool newState = utilityButtons.runGraphicsButton.getToggleState();
-        // Invertir la lógica: cuando graphics está ON, ocultar visualizaciones
-        transferDisplay.setEnvelopeVisible(!newState);
-        processor.setEnvelopeVisualEnabled(!newState);
-        // Cuando graphics está activo, ya no hay grMeter que ocultar
+        bool visualState = utilityButtons.runGraphicsButton.getToggleState();
+        // El botón tiene estado visual INVERTIDO: false = AZUL, true = TRANSPARENTE
+        bool realState = !visualState; // Invertir para obtener el estado real
+        // Graphics ON (botón AZUL) = mostrar envolventes
+        // Graphics OFF (botón TRANSPARENTE) = ocultar envolventes
+        transferDisplay.setEnvelopeVisible(realState); // Estado real
+        processor.setEnvelopeVisualEnabled(realState); // Estado real
+        processor.displayGraphicsEnvelopes = realState; // Guardar estado real
         // Mantener el texto siempre como "graphics"
+        
+        // Marcar el preset como modificado cuando se cambia el estado de graphics
+        handleParameterChange();
     }
     // Botones de gestión de presets
     else if (button == &presetArea.saveButton)
     {
-        // Desactivar botones momentáneos antes de guardar - DELTA ya se guarda en presets
+        // Desactivar botones momentáneos antes de guardar
         parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
         sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
         savePresetFile();
     }
     else if (button == &presetArea.saveAsButton)
     {
-        // Desactivar botones momentáneos antes de guardar - DELTA ya se guarda en presets
+        // Desactivar botones momentáneos antes de guardar
         parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
         sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
         saveAsPresetFile();
     }
     else if (button == &presetArea.deleteButton)
     {
-        // Desactivar botones momentáneos antes de mostrar el diálogo - DELTA ahora se guarda en presets
+        // Desactivar botones momentáneos antes de mostrar el diálogo
         parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
         sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
         deletePresetFile();
     }
     else if (button == &presetArea.backButton)
     {
-        // Desactivar botones momentáneos antes de cambiar preset - DELTA ahora se guarda en presets
+        // Desactivar botones momentáneos antes de cambiar preset
         parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
         sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
         selectPreviousPreset();
     }
     else if (button == &presetArea.nextButton)
     {
-        // Desactivar botones momentáneos antes de cambiar preset - DELTA ahora se guarda en presets
+        // Desactivar botones momentáneos antes de cambiar preset
         parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
         sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
         selectNextPreset();
     }
@@ -1007,17 +1049,35 @@ void JCBTransientAudioProcessorEditor::handleParameterChange()
         processor.setPresetTextItalic(true);
         
     } else {
-        // No hay preset seleccionado - verificar si es DEFAULT
+        // No hay preset seleccionado - verificar el texto actual del menú
         juce::String currentText = presetArea.presetMenu.getTextWhenNothingSelected();
-        if (currentText == "DEFAULT" || currentText.isEmpty()) {
-            // DEFAULT nunca debe mostrarse como modificado
-            // En su lugar, no mostrar nada
+        
+        if (currentText == "DEFAULT") {
+            // DEFAULT ahora SÍ puede mostrarse como modificado
+            // Esto permite detectar cuando graphics u otros elementos no-APVTS han cambiado
+            presetArea.presetMenu.setTextWhenNothingSelected("DEFAULT*");
+            presetArea.presetMenu.setTextItalic(true);
+            
+            // Guardar el estado visual en el processor
+            processor.setPresetDisplayText("DEFAULT*");
+            processor.setPresetTextItalic(true);
+        }
+        else if (currentText.isEmpty()) {
+            // Si está vacío, no hacer nada
             presetArea.presetMenu.setTextWhenNothingSelected("");
             presetArea.presetMenu.setTextItalic(false);
             
             // Guardar el estado visual en el processor
             processor.setPresetDisplayText("");
             processor.setPresetTextItalic(false);
+        }
+        else if (!currentText.endsWith("*")) {
+            // Si hay un preset cargado (no vacío, no DEFAULT y sin asterisco)
+            // Añadir asterisco y poner en itálica
+            presetArea.presetMenu.setTextWhenNothingSelected(currentText + "*");
+            presetArea.presetMenu.setTextItalic(true);
+            processor.setPresetDisplayText(currentText + "*");
+            processor.setPresetTextItalic(true);
         }
         // Si ya tiene un asterisco, no hacer nada
     }
@@ -1241,21 +1301,19 @@ void JCBTransientAudioProcessorEditor::setupKnobs()
     rightBottomKnobs.relSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
     rightBottomKnobs.relSlider.setLookAndFeel(&sliderLAFBig);
     rightBottomKnobs.relSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    rightBottomKnobs.relSlider.setRange(0.1, 1000.0, 0.01);  // Coherente con parámetro
-    rightBottomKnobs.relSlider.setSkewFactorFromMidPoint(30.0);  // Centrar rango operativo 1-50ms
+    rightBottomKnobs.relSlider.setRange(0.1, 350.0, 0.01);  // Coherente con parámetro
+    rightBottomKnobs.relSlider.setSkewFactorFromMidPoint(120.0);  // Centrar rango operativo 1-50ms
     rightBottomKnobs.relSlider.setDoubleClickReturnValue(true, 120.0);  // Valor por defecto 120ms
     rightBottomKnobs.relSlider.setPopupDisplayEnabled(false, false, this);
     rightBottomKnobs.relSlider.setTextBoxIsEditable(true);
     // Custom text formatting con decimales progresivos - coherente con parámetro
     rightBottomKnobs.relSlider.textFromValueFunction = [](double value) {
-        if (value < 1.0)
-            return juce::String(value, 2) + " ms";  // 2 decimales: 0.10
-        else if (value < 10.0)
-            return juce::String(value, 1) + " ms";  // 1 decimal: 1.5
+        if (value < 10.0)
+            return juce::String(std::round(value * 100.0) / 100.0, 2) + " ms"; // 0.01 paso, 2 decimales
         else if (value < 100.0)
-            return juce::String(value, 1) + " ms";  // 1 decimal: 10.5
+            return juce::String(std::round(value * 10.0) / 10.0, 1) + " ms";   // 0.1 paso, 1 decimal
         else
-            return juce::String(value, 0) + " ms";  // Sin decimales >= 100ms
+            return juce::String(std::round(value), 0) + " ms";                 // 1.0 paso, 0 decimales
     };
     addAndMakeVisible(rightBottomKnobs.relSlider);
     if (auto* param = processor.apvts.getParameter("e_REL"))
@@ -1694,6 +1752,17 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
         int selectedId = presetArea.presetMenu.getSelectedId();
         if (selectedId == 0) return;
         
+        // Desactivar botones momentáneos antes de cargar preset
+        if (parameterButtons.bypassButton.getToggleState()) {
+            parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+        }
+        if (parameterButtons.deltaButton.getToggleState()) {
+            parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
+        }
+        if (sidechainControls.soloScButton.getToggleState()) {
+            sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
+        }
+        
         // CRÍTICO: Establecer flag de carga PRIMERO para prevenir transacciones de undo
         isLoadingPreset = true;
         
@@ -1706,10 +1775,17 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
         
         // NOTA: El historial de undo se borrará al final para evitar grabar cambios de parámetros
         
-        juce::String presetName = presetArea.presetMenu.getItemText(selectedId - 1);
+        // Buscar nombre real del preset usando el mapeo de IDs
+        juce::String presetName;
+        if (presetIdToNameMap.find(selectedId) != presetIdToNameMap.end()) {
+            presetName = presetIdToNameMap[selectedId];
+        } else {
+            // Fallback si no está en el mapeo (no debería pasar)
+            presetName = presetArea.presetMenu.getText();
+        }
         
-        // Ignorar separadores
-        if (presetName.startsWith("---")) {
+        // Si el nombre está vacío, salir
+        if (presetName.isEmpty()) {
             presetArea.presetMenu.setSelectedId(0);
             return;
         }
@@ -1837,6 +1913,14 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 sidechainControls.lpfOrderButton.setToggleState(realValue >= 0.5f, juce::sendNotificationSync);
             }
             
+            // Activar graphics por defecto en DEFAULT
+            utilityButtons.runGraphicsButton.setToggleState(false, juce::dontSendNotification); // false = AZUL (visual invertido)
+            processor.displayGraphicsEnvelopes = true;
+            
+            // Graphics ON (botón azul) = envolventes VISIBLES
+            transferDisplay.setEnvelopeVisible(true); // Botón true (azul) = envolventes visibles
+            processor.setEnvelopeVisualEnabled(true); // Botón true (azul) = envolventes visibles
+            
             // Reactivar undo después carga de preset
             isLoadingPreset = false;
             
@@ -1859,12 +1943,12 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 }
             }
         } 
-        else if (presetName.startsWith("[F] ")) {
+        else if (presetName.startsWith("General_")) {
             // Es un factory preset - cargar desde BinaryData
-            juce::String factoryPresetName = presetName.substring(4); // Quitar "[F] "
+            // presetName ya viene como "General_Ataquer" o "General_Sustainer" desde el mapeo
             
             // Convertir el nombre a formato de recurso BinaryData
-            juce::String resourceName = factoryPresetName.replace(" ", "_") + "_preset";
+            juce::String resourceName = presetName + "_preset";
             
             // Buscar el recurso en BinaryData
             for (int i = 0; i < BinaryData::namedResourceListSize; ++i) {
@@ -1880,7 +1964,17 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                         std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
                         
                         if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
-                            processor.apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+                            auto stateTree = juce::ValueTree::fromXml(*xmlState);
+                            processor.apvts.replaceState(stateTree);
+                            
+                            // Para Factory Presets, SIEMPRE activar graphics independientemente del UISettings
+                            // Esto asegura que los usuarios siempre vean las formas de onda en los presets de fábrica
+                            utilityButtons.runGraphicsButton.setToggleState(false, juce::dontSendNotification); // false = AZUL (visual invertido)
+                            processor.displayGraphicsEnvelopes = true;
+                            
+                            // Actualizar componentes visuales (botón ON = envelopes VISIBLES)
+                            transferDisplay.setEnvelopeVisible(true); // Botón true = visible
+                            processor.setEnvelopeVisualEnabled(true); // Botón true = visible
                             
                             // Queue las actualizaciones de parámetros para botones momentáneos - DELTA ahora se guarda
                             queueParameterUpdate("p_BYPASS", 0.0f);
@@ -1900,7 +1994,23 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
                 std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
                 
                 if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
-                    processor.apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+                    auto stateTree = juce::ValueTree::fromXml(*xmlState);
+                    processor.apvts.replaceState(stateTree);
+                    
+                    // Restaurar estado del botón graphics si está presente
+                    auto uiSettings = stateTree.getChildWithName("UISettings");
+                    if (uiSettings.isValid()) {
+                        bool showGraphics = uiSettings.getProperty("displayGraphicsEnvelopes", true);
+                        utilityButtons.runGraphicsButton.setToggleState(!showGraphics, juce::dontSendNotification); // INVERTIR visual
+                        processor.displayGraphicsEnvelopes = showGraphics;
+                        
+                        // Actualizar componentes visuales (botón ON = envelopes VISIBLES)
+                        transferDisplay.setEnvelopeVisible(showGraphics); // Directo
+                        processor.setEnvelopeVisualEnabled(showGraphics); // Directo
+                    } else {
+                        // Si no hay UISettings guardado, mantener el estado actual del botón
+                        // No cambiar nada, usar el estado que ya tiene el plugin
+                    }
                     
                     // Queue actualizaciones de parámetros para botones momentáneos
                     queueParameterUpdate("p_BYPASS", 0.0f);
@@ -2579,55 +2689,85 @@ juce::Array<juce::File> JCBTransientAudioProcessorEditor::populatePresetFolder()
 void JCBTransientAudioProcessorEditor::refreshPresetMenu()
 {
     presetArea.presetMenu.clear();
-    juce::StringArray presetNames;
+    presetIdToNameMap.clear();
     
     // Añadir DEFAULT como primer preset siempre
-    presetNames.add("DEFAULT");
+    presetArea.presetMenu.addItem("DEFAULT", 1);
+    presetIdToNameMap[1] = "DEFAULT";
     
-    // Añadir separador para factory presets
-    presetNames.add("--- Factory Presets ---");
+    // Añadir separador
+    presetArea.presetMenu.addItem("---", 2);
     
-    // Añadir factory presets desde BinaryData
-    juce::StringArray factoryPresetNames;
+    // Organizar factory presets por categoría
+    int nextId = 100;
+    
+    // Buscar presets General_ en BinaryData
+    juce::StringArray generalPresets;
+    juce::StringArray generalFullNames;
+    
     for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
     {
         juce::String resourceName(BinaryData::namedResourceList[i]);
         
-        // Buscar archivos que terminen en "_preset" (los .preset se convierten a _preset en BinaryData)
+        // Buscar archivos que terminen en "_preset"
         if (resourceName.endsWith("_preset"))
         {
-            // Limpiar el nombre para mostrar
-            juce::String cleanName = resourceName.replace("_preset", "")
-                                               .replace("_", " ");
-            factoryPresetNames.add(cleanName);
+            juce::String cleanName = resourceName.replace("_preset", "");
+            
+            // Solo procesar presets General_
+            if (cleanName.startsWith("General_"))
+            {
+                // Mostrar nombre sin prefijo General_
+                juce::String displayName = "[F] " + cleanName.substring(8);
+                generalPresets.add(displayName);
+                generalFullNames.add(cleanName);
+            }
         }
     }
     
-    // Ordenar factory presets alfabéticamente
-    factoryPresetNames.sort(true);
-    for (const auto& name : factoryPresetNames)
+    // Si hay presets de General, añadirlos como categoría
+    if (!generalPresets.isEmpty())
     {
-        presetNames.add("[F] " + name);  // [F] indica Factory preset
+        generalPresets.sort(true);
+        generalFullNames.sort(true);
+        
+        // Añadir categoría con sus subitems
+        presetArea.presetMenu.addCategoryItem("[F] General", generalPresets, nextId);
+        
+        // Mapear IDs a nombres de presets
+        for (int j = 0; j < generalPresets.size(); ++j)
+        {
+            int presetId = nextId + j + 1;  // +1 porque el ID de la categoría es nextId
+            presetIdToNameMap[presetId] = generalFullNames[j];  // Usar nombre completo con prefijo
+        }
+        
+        nextId += static_cast<int>(generalPresets.size()) + 1;
     }
     
-    // Añadir separador para user presets
-    presetNames.add("--- User Presets ---");
+    // Añadir separador antes de user presets
+    presetArea.presetMenu.addItem("---", nextId++);
     
-    // Añadir los presets del disco (user presets)
+    // Añadir user presets (sin categoría)
     juce::StringArray userPresets;
     for (int i = 0; i < getUpdatedNumPresets(); i++) {
         userPresets.add(populatePresetFolder()[i].getFileNameWithoutExtension());
     }
     
-    // Ordenar user presets alfabéticamente
-    userPresets.sort(true);
-    presetNames.addArray(userPresets);
-    
-    // Añadir todos los items al menú
-    presetArea.presetMenu.addItemList(presetNames, 1);
+    if (!userPresets.isEmpty())
+    {
+        userPresets.sort(true);
+        
+        // Añadir cada preset de usuario directamente (sin header)
+        for (const auto& preset : userPresets)
+        {
+            presetArea.presetMenu.addItem(preset, nextId);
+            presetIdToNameMap[nextId] = preset;
+            nextId++;
+        }
+    }
     
     // Si había un preset seleccionado previamente, intentar restaurarlo
-    if (processor.getLastPreset() > 0 && processor.getLastPreset() <= presetNames.size()) {
+    if (processor.getLastPreset() > 0) {
         presetArea.presetMenu.setSelectedId(processor.getLastPreset());
     }
 }
@@ -2681,6 +2821,11 @@ void JCBTransientAudioProcessorEditor::savePresetFile()
                 // Guardar directamente en el archivo existente
                 auto presetFile = getPresetsFolder().getChildFile(currentPresetName + ".preset");
                 auto state = processor.apvts.copyState();
+                
+                // Añadir estado del botón graphics (no automatizable)
+                auto uiSettings = state.getOrCreateChildWithName("UISettings", nullptr);
+                uiSettings.setProperty("displayGraphicsEnvelopes", utilityButtons.runGraphicsButton.getToggleState(), nullptr);
+                
                 std::unique_ptr<juce::XmlElement> xml(state.createXml());
                 
                 if (xml != nullptr) {
@@ -2695,13 +2840,13 @@ void JCBTransientAudioProcessorEditor::savePresetFile()
                     // Actualizar menú si es necesario
                     if (presetArea.presetMenu.getSelectedId() <= 0) {
                         refreshPresetMenu();
-                        for (int i = 0; i < presetArea.presetMenu.getNumItems(); i++) {
-                            if (presetArea.presetMenu.getItemText(i) == currentPresetName) {
-                                presetArea.presetMenu.setSelectedId(i + 1);
-                                processor.setLastPreset(i + 1);
-                                break;
-                            }
-                        }
+                        // No usar setSelectedId para evitar triggerar onChange
+                        presetArea.presetMenu.setSelectedId(0);
+                        presetArea.presetMenu.setTextWhenNothingSelected(currentPresetName);
+                        presetArea.presetMenu.setTextItalic(false);
+                        processor.setPresetDisplayText(currentPresetName);
+                        processor.setPresetTextItalic(false);
+                        processor.setLastPreset(0);
                     }
                 }
                 } else if (result == 2) { // Save As...
@@ -2757,6 +2902,11 @@ void JCBTransientAudioProcessorEditor::saveAsPresetFile()
                     if (shouldOverwrite) {
                         // Guardar el preset
                         auto state = processor.apvts.copyState();
+                        
+                        // Añadir estado del botón graphics (no automatizable)
+                        auto uiSettings = state.getOrCreateChildWithName("UISettings", nullptr);
+                        uiSettings.setProperty("displayGraphicsEnvelopes", utilityButtons.runGraphicsButton.getToggleState(), nullptr);
+                        
                         std::unique_ptr<juce::XmlElement> xml(state.createXml());
                         
                         if (xml != nullptr) {
@@ -2765,22 +2915,24 @@ void JCBTransientAudioProcessorEditor::saveAsPresetFile()
                             // Actualizar el menú
                             refreshPresetMenu();
                             
-                            // Seleccionar el preset recién guardado
-                            for (int i = 0; i < presetArea.presetMenu.getNumItems(); i++) {
-                                if (presetArea.presetMenu.getItemText(i) == presetName) {
-                                    presetArea.presetMenu.setSelectedId(i + 1);
-                                    processor.setLastPreset(i + 1);
-                                    processor.setPresetDisplayText(presetName);
-                                    processor.setPresetTextItalic(false);
-                                    break;
-                                }
-                            }
+                            // Mostrar el preset recién guardado sin triggerar onChange
+                            presetArea.presetMenu.setSelectedId(0);
+                            presetArea.presetMenu.setTextWhenNothingSelected(presetName);
+                            presetArea.presetMenu.setTextItalic(false);
+                            processor.setPresetDisplayText(presetName);
+                            processor.setPresetTextItalic(false);
+                            processor.setLastPreset(0);
                         }
                     }
                 });
             } else {
                 // Guardar directamente si no existe
                 auto state = processor.apvts.copyState();
+                
+                // Añadir estado del botón graphics (no automatizable)
+                auto uiSettings = state.getOrCreateChildWithName("UISettings", nullptr);
+                uiSettings.setProperty("displayGraphicsEnvelopes", utilityButtons.runGraphicsButton.getToggleState(), nullptr);
+                
                 std::unique_ptr<juce::XmlElement> xml(state.createXml());
                 
                 if (xml != nullptr) {
@@ -2789,16 +2941,13 @@ void JCBTransientAudioProcessorEditor::saveAsPresetFile()
                     // Actualizar el menú
                     refreshPresetMenu();
                     
-                    // Seleccionar el preset recién guardado
-                    for (int i = 0; i < presetArea.presetMenu.getNumItems(); i++) {
-                        if (presetArea.presetMenu.getItemText(i) == presetName) {
-                            presetArea.presetMenu.setSelectedId(i + 1);
-                            processor.setLastPreset(i + 1);
-                            processor.setPresetDisplayText(presetName);
-                            processor.setPresetTextItalic(false);
-                            break;
-                        }
-                    }
+                    // Mostrar el preset recién guardado sin triggerar onChange
+                    presetArea.presetMenu.setSelectedId(0);
+                    presetArea.presetMenu.setTextWhenNothingSelected(presetName);
+                    presetArea.presetMenu.setTextItalic(false);
+                    processor.setPresetDisplayText(presetName);
+                    processor.setPresetTextItalic(false);
+                    processor.setLastPreset(0);
                 }
             }
         }
@@ -2818,7 +2967,13 @@ void JCBTransientAudioProcessorEditor::deletePresetFile()
     
     if (selectedId > 0) {
         // Hay un preset seleccionado en el menú
-        presetName = presetArea.presetMenu.getItemText(selectedId - 1);
+        // Buscar el nombre real del preset usando el mapeo de IDs
+        if (presetIdToNameMap.find(selectedId) != presetIdToNameMap.end()) {
+            presetName = presetIdToNameMap[selectedId];
+        } else {
+            // Fallback: usar getText() para obtener el texto mostrado
+            presetName = presetArea.presetMenu.getText();
+        }
     } else {
         // No hay selección, verificar si hay un preset modificado
         juce::String displayText = presetArea.presetMenu.getTextWhenNothingSelected();
@@ -2874,24 +3029,32 @@ void JCBTransientAudioProcessorEditor::deletePresetFile()
 
 void JCBTransientAudioProcessorEditor::selectNextPreset()
 {
-    int currentId = presetArea.presetMenu.getSelectedId();
-    int numItems = presetArea.presetMenu.getNumItems();
+    // Desactivar botones momentáneos antes de cambiar preset
+    parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+    parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
+    sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
     
-    if (numItems > 1) {
-        int nextId = currentId;
+    int currentId = presetArea.presetMenu.getSelectedId();
+    auto selectableIds = presetArea.presetMenu.getAllSelectableIds();
+    
+    if (selectableIds.size() > 1) {
+        // Encontrar el índice actual
+        auto it = std::find(selectableIds.begin(), selectableIds.end(), currentId);
         
-        // Buscar el siguiente preset válido (no separador)
-        do {
-            nextId = (nextId % numItems) + 1;
-            juce::String itemText = presetArea.presetMenu.getItemText(nextId - 1);
-            
-            // Si no es un separador, es un preset válido
-            if (!itemText.startsWith("---")) {
-                break;
+        // Si se encontró el ID actual, ir al siguiente
+        if (it != selectableIds.end()) {
+            ++it;
+            // Si llegamos al final, volver al principio
+            if (it == selectableIds.end()) {
+                it = selectableIds.begin();
             }
-        } while (nextId != currentId); // Evitar bucle infinito
+        } else {
+            // Si no se encontró (no debería pasar), usar el primero
+            it = selectableIds.begin();
+        }
         
-        presetArea.presetMenu.setSelectedId(nextId);
+        // Seleccionar el nuevo preset
+        presetArea.presetMenu.setSelectedId(*it);
         
         // Trigger onChange para cargar el preset
         if (presetArea.presetMenu.onChange) {
@@ -2902,26 +3065,33 @@ void JCBTransientAudioProcessorEditor::selectNextPreset()
 
 void JCBTransientAudioProcessorEditor::selectPreviousPreset()
 {
-    int currentId = presetArea.presetMenu.getSelectedId();
-    int numItems = presetArea.presetMenu.getNumItems();
+    // Desactivar botones momentáneos antes de cambiar preset
+    parameterButtons.bypassButton.setToggleState(false, juce::sendNotification);
+    parameterButtons.deltaButton.setToggleState(false, juce::sendNotification);
+    sidechainControls.soloScButton.setToggleState(false, juce::sendNotification);
     
-    if (numItems > 1) {
-        int prevId = currentId;
+    int currentId = presetArea.presetMenu.getSelectedId();
+    auto selectableIds = presetArea.presetMenu.getAllSelectableIds();
+    
+    if (selectableIds.size() > 1) {
+        // Encontrar el índice actual
+        auto it = std::find(selectableIds.begin(), selectableIds.end(), currentId);
         
-        // Buscar el anterior preset válido (no separador)
-        do {
-            prevId = prevId - 1;
-            if (prevId < 1) prevId = numItems;
-            
-            juce::String itemText = presetArea.presetMenu.getItemText(prevId - 1);
-            
-            // Si no es un separador, es un preset válido
-            if (!itemText.startsWith("---")) {
-                break;
+        // Si se encontró el ID actual, ir al anterior
+        if (it != selectableIds.end()) {
+            if (it == selectableIds.begin()) {
+                // Si estamos al principio, ir al último
+                it = selectableIds.end() - 1;
+            } else {
+                --it;
             }
-        } while (prevId != currentId); // Evitar bucle infinito
+        } else {
+            // Si no se encontró (no debería pasar), usar el último
+            it = selectableIds.end() - 1;
+        }
         
-        presetArea.presetMenu.setSelectedId(prevId);
+        // Seleccionar el nuevo preset
+        presetArea.presetMenu.setSelectedId(*it);
         
         // Trigger onChange para cargar el preset
         if (presetArea.presetMenu.onChange) {
@@ -3105,7 +3275,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     if (currentLanguage == TooltipLanguage::Spanish)
     {
         // Spanish tooltips
-        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v0.9.1 beta\nPlugin de audio open source\nClick para créditos");
+        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v0.9.2 beta\nPlugin de audio open source\nClick para créditos");
         if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 100%");
@@ -3113,7 +3283,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
         if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: retardo para evitar overshooting\nReporta latencia al host\nRango: 0 a 10 ms | Por defecto: 0 ms");
         if (key == "clip") return JUCE_UTF8("SOFT CLIP: limitador suave de salida\nPreviene saturación con distorsión armónica\nRango: 0/OFF a 100% | Por defecto: OFF");
         if (key == "attack") return JUCE_UTF8("ATTACK: tiempo para alcanzar máxima ganancia/atenuación\nVelocidad de respuesta\nRango: 0 a 250 ms | Por defecto: 0 ms");
-        if (key == "release") return JUCE_UTF8("RELEASE: tiempo de recuperación\nPermite valores extremos para efectos creativos\nRango: 0.1 a 350 ms | Por defecto: 60 ms");
+        if (key == "release") return JUCE_UTF8("RELEASE: tiempo de recuperación\nPermite valores extremos para efectos creativos\nRango: 0.1 a 350 ms | Por defecto: 120 ms");
         if (key == "hold") return JUCE_UTF8("HOLD: tiempo de retención antes de que comience release\nMantiene la ganancia/atenuación por un período\nRango: 0 a 250 ms | Por defecto: 10 ms");
         if (key == "dmode") return JUCE_UTF8("DMODE: modo de escucha solo delta (TRANS/SUST)\nConmuta cuando Delta está activo entre:\nTRANS: ataque | SUST: sustain | Por defecto: TRANS");
         if (key == "delta") return JUCE_UTF8("SOLO DELTA: escucha solo la ganancia/reducción aplicada\nParámetro automatizable, se guarda en presets\nRango: OFF/ON | Por defecto: OFF");
@@ -3147,7 +3317,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     else
 	{
 	    // English tooltips
-	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v0.9.1 beta\nOpen source audio plugin\nClick for credits");
+	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v0.9.2 beta\nOpen source audio plugin\nClick for credits");
 	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 100%");
@@ -3155,7 +3325,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
 	    if (key == "lookahead") return JUCE_UTF8("LOOK AHEAD: delay to prevent overshooting\nReports latency to host\nRange: 0 to 10 ms | Default: 0 ms");
 	    if (key == "clip") return JUCE_UTF8("SOFT CLIP: soft output limiter\nPrevents clipping with harmonic distortion\nRange: 0/OFF to 100% | Default: OFF");
 	    if (key == "attack") return JUCE_UTF8("ATTACK: time to reach max gain/attenuation\nResponse speed\nRange: 0 to 250 ms | Default: 0 ms");
-	    if (key == "release") return JUCE_UTF8("RELEASE: recovery time\nAllows extreme values for creative effects\nRange: 0.1 to 350 ms | Default: 60 ms");
+	    if (key == "release") return JUCE_UTF8("RELEASE: recovery time\nAllows extreme values for creative effects\nRange: 0.1 to 350 ms | Default: 120 ms");
 	    if (key == "hold") return JUCE_UTF8("HOLD: hold time before release starts\nMaintains gain/attenuation for a period\nRange: 0 to 250 ms | Default: 10 ms");
 	    if (key == "dmode") return JUCE_UTF8("DMODE: delta listening mode (TRANS/SUST)\nSwitches when Delta is active between:\nTRANS: attack | SUST: sustain | Default: TRANS");
 	    if (key == "delta") return JUCE_UTF8("SOLO DELTA: listen to gain/reduction only\nAutomatable parameter, saved in presets\nRange: OFF/ON | Default: OFF");

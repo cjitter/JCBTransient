@@ -19,7 +19,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(JCBTransient VERSION 0.9.0)
+project(JCBTransient VERSION 0.9.2)
 
 # Configuración C++
 set(CMAKE_CXX_STANDARD 20)
@@ -69,7 +69,7 @@ juce_add_plugin(JCBTransient
         # Información básica del plugin
         PLUGIN_NAME "JCBTransient"
         PRODUCT_NAME "JCBTransient"
-        VERSION 0.9.1
+        VERSION 0.9.2
         DESCRIPTION "Stereo-linked feedforward compressor with external sidechain, parallel processing and lookahead"
 
         # Información de la empresa
@@ -133,8 +133,8 @@ juce_add_binary_data(JCBTransient_BinaryData
         Assets/code/Detector+GainCalc.txt
         Assets/code/Output.txt
         # Presets de fábrica
-        Assets/FactoryPresets/Sustainer.preset
-        Assets/FactoryPresets/Ataquer.preset
+        Assets/FactoryPresets/General_Sustainer.preset
+        Assets/FactoryPresets/General_Ataquer.preset
 )
 
 # Linkear binary data al plugin
