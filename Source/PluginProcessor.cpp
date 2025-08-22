@@ -1468,7 +1468,7 @@ void JCBTransientAudioProcessor::handleAsyncUpdate()
 
     // Recalcular canales con fallback defensivo (por si el host cambia layout "a destiempo")
     // NOTA: Esta mejora defensiva está implementada en JCBExpander REVISAR en JCBCompressor
-    const int chans = juce::jmax(1, getTotalNumOutputChannels());
+    // const int chans = juce::jmax(1, getTotalNumOutputChannels()); // Variable no usada - comentada
 
     // NO redimensionar - el buffer ya está pre-asignado al máximo en prepareToPlay
     // Solo resetear los índices y limpiar si es necesario

@@ -201,9 +201,10 @@ private:
         Range
     };
     
-    DragMode currentDragMode = DragMode::None;        // Modo de arrastre actual
+    // Variables de drag comentadas - no se usan actualmente
+    // DragMode currentDragMode = DragMode::None;        // Modo de arrastre actual
     juce::Point<float> lastMousePos;                  // Última posición del mouse
-    float dragStartValue = 0.0f;                      // Valor inicial del drag
+    // float dragStartValue = 0.0f;                      // Valor inicial del drag
     
     //==========================================================================
     // VARIABLES DE ESTADO Y VISUALIZACIÓN

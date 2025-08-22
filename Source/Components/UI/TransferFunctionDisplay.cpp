@@ -1470,7 +1470,6 @@ void TransferFunctionDisplay::drawAttackSustainHistograms(juce::Graphics& g, juc
     // Configuración de dibujo
     const float topOffset = 20.0f;
     const float baseLine = bounds.getCentreY(); // Línea base en el centro para bipolar
-    const float halfHeight = (bounds.getHeight() - 2 * topOffset) * 0.5f;
     
     const int currentIndex = waveformWriteIndex.load();
     const float widthStep = bounds.getWidth() / static_cast<float>(displayPoints);
