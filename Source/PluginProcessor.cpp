@@ -933,11 +933,11 @@ bool JCBTransientAudioProcessor::isBusesLayoutSupported(const juce::AudioProcess
  * Crear el layout de parámetros del plugin
  * CRÍTICO: Define todos los parámetros del compresor en orden alfabético
  * Incluye configuración de rangos, valores por defecto y metadata para cada parámetro
- * Version hint 21 fuerza re-escaneo en hosts para parámetros renombrados
+ * Version hint 22 para versión 1.0.0-alpha.1 - fuerza re-escaneo en hosts
  */
 juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::createParameterLayout()
 {
-   const int versionHint = 21;
+   const int versionHint = 22;
 
    std::vector <std::unique_ptr<juce::RangedAudioParameter>> params;
 

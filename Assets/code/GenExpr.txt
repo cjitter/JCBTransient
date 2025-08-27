@@ -179,7 +179,11 @@ kneeEnd = 1.00;
 kneeTarget = 0.80;
 t = clamp((smoothSensitivity - kneeStart) / (kneeEnd - kneeStart), 0, 1);
 t2 = t * t;  // easing cuadrático
+
 smoothSensitivity = mix(smoothSensitivity, kneeTarget, t2);
+// Compensación del knee para Sustain: re‑escala 0..0.80 → 0..1.00
+sensAttack = smoothSensitivity;
+sensSustain = clamp(smoothSensitivity / 0.80, 0, 1);
 
 // =============================================================================
 // IMPLEMENTACIÓN DELTA MODE - Bypass automático de procesamiento posterior
@@ -658,11 +662,14 @@ normalizedSidechainSignal = sidechainTrimCompensated; // Señal compensada para 
 // APLICAR GANANCIAS CON CURVA SUAVE
 // Convertir controles a factores lineales con curva
 attack_factor = pow(dbtoa(smoothAttackGain), 0.8);
-sustain_factor = pow(dbtoa(smoothSustainGain), 0.8);
+sustain_factor = pow(dbtoa(smoothSustainGain), 1.05);  // leve empuje, más balanceado
 
-// Calcular ganancia total con mezcla ponderada
-gain_from_attack = mix(1, attack_factor, attack_env * smoothSensitivity);
-gain_from_sustain = mix(1, sustain_factor, sustain_env * smoothSensitivity);
+// Dar un poco más de "peso" al sustain en 0..1
+sustain_env_tilt = pow(sustain_env, 0.9);  // menos tilt (más sutil)
+
+// Usa sensibilidad directa para Attack y compensada para Sustain
+gain_from_attack = mix(1, attack_factor, attack_env * sensAttack);
+gain_from_sustain = mix(1, sustain_factor, sustain_env_tilt * sensSustain);
 
 // Combinar ambas ganancias
 gain_total = gain_from_attack * gain_from_sustain;
@@ -682,11 +689,11 @@ if(delta_control > 0.01) {
     
     // Calcular las tres posibles señales delta
     // 1. Attack only
-    gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
+    gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
     delta_attack_only = (leftDelayedForCompression * gain_attack_only) - leftDelayedForCompression;
     
     // 2. Sustain only
-    gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
+    gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
     delta_sustain_only = (leftDelayedForCompression * gain_sustain_only) - leftDelayedForCompression;
     
     // 3. Both (completo)
@@ -766,11 +773,11 @@ if(rightDeltaControl > 0.01) {
     
     // Calcular las tres posibles señales delta
     // 1. Attack only
-    right_gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
+    right_gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
     right_delta_attack_only = (rightDelayedForCompression * right_gain_attack_only) - rightDelayedForCompression;
     
     // 2. Sustain only
-    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
+    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
     right_delta_sustain_only = (rightDelayedForCompression * right_gain_sustain_only) - rightDelayedForCompression;
     
     // 3. Both (completo)
@@ -853,7 +860,7 @@ out3 = attack_meter_db / 18;  // Normalizar: ±18dB → ±1
 if(sustain_env > 0.001) {
     // Convertir la ganancia a dB para visualización simétrica
     sustain_gain_db = atodb(gain_from_sustain);
-    sustain_meter_db = sustain_gain_db * sustain_env;
+    sustain_meter_db = sustain_gain_db * sustain_env_tilt;
 } else {
     sustain_meter_db = 0;
 }

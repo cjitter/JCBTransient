@@ -73,9 +73,9 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Verificar si el host es Logic Pro
     juce::PluginHostType hostInfo;
     if (hostInfo.isLogic()) {
-        titleText = "v0.9.2 beta";  // Solo versión para Logic Pro
+        titleText = "v1.0.0-alpha.1";  // Solo versión para Logic Pro
     } else {
-        titleText = "JCBTransient v0.9.2 beta";  // Nombre completo para otros DAWs
+        titleText = "JCBTransient v1.0.0-alpha.1";  // Nombre completo para otros DAWs
     }
     
     titleLink.setButtonText(titleText);
@@ -1737,41 +1737,6 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
         int selectedId = presetArea.presetMenu.getSelectedId();
         if (selectedId == 0) return;
         
-        // Desactivar botones momentáneos antes de cargar preset
-        if (parameterButtons.bypassButton.getToggleState()) {
-            parameterButtons.bypassButton.setToggleState(false, juce::dontSendNotification);
-        }
-        if (parameterButtons.deltaButton.getToggleState()) {
-            parameterButtons.deltaButton.setToggleState(false, juce::dontSendNotification);
-        }
-        if (sidechainControls.soloScButton.getToggleState()) {
-            sidechainControls.soloScButton.setToggleState(false, juce::dontSendNotification);
-        }
-        
-        // Guard de scope para asegurar que el flag siempre se resetea
-        // CRÍTICO: LoadingGuard maneja automáticamente el flag isLoadingPreset
-        struct LoadingGuard {
-            bool& flag;
-            const bool prev;
-            explicit LoadingGuard(bool& f) : flag(f), prev(f) { flag = true; }
-            ~LoadingGuard() { flag = prev; }
-        } guard(isLoadingPreset);
-        
-        // NOTA: El historial de undo se borrará al final para evitar grabar cambios de parámetros
-        
-        // Pre-reset: apagar UI de botones momentáneos y aplicar efectos
-        parameterButtons.bypassButton.setToggleState(false, juce::dontSendNotification);
-        applyBypassSideEffects(false);
-        
-        parameterButtons.deltaButton.setToggleState(false, juce::dontSendNotification);
-        applyDeltaSideEffects(false);
-        
-        sidechainControls.soloScButton.setToggleState(false, juce::dontSendNotification);
-        applySoloSCSideEffects(false);
-        
-        sidechainControls.keyButton.setToggleState(false, juce::dontSendNotification);
-        applyExtKeySideEffects(false);
-        
         // Buscar nombre real del preset usando el mapeo de IDs
         juce::String presetName;
         if (presetIdToNameMap.find(selectedId) != presetIdToNameMap.end()) {
@@ -1787,246 +1752,11 @@ void JCBTransientAudioProcessorEditor::setupPresetArea()
             return;
         }
         
-        if (presetName == "DEFAULT")
-        {
-            // RAII activo arriba: LoadingGuard guard(isLoadingPreset);
-            auto& apvts = processor.apvts;
-
-            // Helpers: set a default / set a specific normalised value [0..1] con gestos
-            auto setParamNorm = [&](const char* id, float norm)
-            {
-                if (auto* p = apvts.getParameter(id))
-                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
-                {
-                    rp->beginChangeGesture();
-                    rp->setValueNotifyingHost(norm);
-                    rp->endChangeGesture();
-                }
-            };
-
-            auto setParamDefault = [&](const char* id)
-            {
-                if (auto* p = apvts.getParameter(id))
-                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
-                    setParamNorm(id, rp->getDefaultValue()); // default normalizado
-            };
-
-            if (auto* um = apvts.undoManager)
-                um->beginNewTransaction("Load DEFAULT");
-
-            // 1) Reset de todos los parámetros persistentes a su default
-            setParamDefault("a_TRIM");
-            setParamDefault("b_ATTACK_GAIN");
-            setParamDefault("c_SUSTAIN_GAIN");
-            setParamDefault("d_ATK");
-            setParamDefault("e_REL");
-            setParamDefault("f_HOLD");
-            setParamDefault("q_SENSITIVITY");
-            setParamDefault("i_MAKEUP");
-            setParamDefault("j_HPF");
-            setParamDefault("k_LPF");
-            setParamDefault("l_SC");
-            setParamDefault("n_LOOKAHEAD");
-            setParamDefault("o_DRYWET");
-            setParamDefault("r_KEY");
-            setParamDefault("u_SOFTCLIP");
-            setParamDefault("y_SCTRIM");
-            setParamDefault("z_SMOOTH");
-            setParamDefault("j_HPFORDER");
-            setParamDefault("k_LPFORDER");
-
-            // 2) Momentary: forzar a 0 SIEMPRE (independiente del default)
-            setParamNorm("p_BYPASS", 0.0f);
-            setParamNorm("m_SOLOSC", 0.0f);
-            setParamNorm("v_DELTA",  0.0f);
-
-            // 3) Graphics baseline (visual invertido: botón false => azul => ON)
-            const bool defaultGraphicsOn = true; // ponlo a false si lo prefieres
-            applyGraphicsSideEffects(defaultGraphicsOn);
-
-            // 4) (Opcional pero seguro) Empujar valores a Gen~ inmediatamente, con tus límites
-            for (int i = 0; i < JCBTransient::num_params(); ++i)
-            {
-                auto id = juce::String(JCBTransient::getparametername(processor.getPluginState(), i));
-                if (auto* rv = apvts.getRawParameterValue(id))
-                {
-                    float v = rv->load();
-                    if (id == "d_ATK" && v < 0.f)   v = 0.f;
-                    if (id == "e_REL" && v < 0.1f)  v = 0.1f;
-                    JCBTransient::setparameter(processor.getPluginState(), i, v, nullptr);
-                }
-            }
-
-            // 5) Alinear UI sin notificaciones en cascada (por si hay controles sin attachment)
-            auto snapSliderToParam = [&](const char* id, juce::Slider& s)
-            {
-                if (auto* p = apvts.getParameter(id))
-                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
-                {
-                    const float raw = rp->convertFrom0to1(rp->getValue());
-                    s.setValue(raw, juce::dontSendNotification);
-                }
-            };
-            auto snapButtonToParam = [&](const char* id, juce::Button& b)
-            {
-                if (auto* p = apvts.getParameter(id))
-                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
-                    b.setToggleState(rp->getValue() >= 0.5f, juce::dontSendNotification);
-            };
-
-            snapSliderToParam("a_TRIM",         trimSlider);
-            snapSliderToParam("b_ATTACK_GAIN",  leftTopKnobs.attackSlider);
-            snapSliderToParam("c_SUSTAIN_GAIN", leftTopKnobs.sustainSlider);
-            snapSliderToParam("d_ATK",          rightBottomKnobs.atkSlider);
-            snapSliderToParam("e_REL",          rightBottomKnobs.relSlider);
-            snapSliderToParam("f_HOLD",         rightBottomKnobs.holdSlider);
-            snapSliderToParam("q_SENSITIVITY",  leftTopKnobs.sensSlider);
-            snapSliderToParam("i_MAKEUP",       makeupSlider);
-            snapSliderToParam("j_HPF",          sidechainControls.hpfSlider);
-            snapSliderToParam("k_LPF",          sidechainControls.lpfSlider);
-            snapSliderToParam("n_LOOKAHEAD",    leftBottomKnobs.lookaheadSlider);
-            snapSliderToParam("o_DRYWET",       leftBottomKnobs.drywetSlider);
-            snapSliderToParam("u_SOFTCLIP",     leftBottomKnobs.clipSlider);
-            snapSliderToParam("y_SCTRIM",       scTrimSlider);
-            snapSliderToParam("z_SMOOTH",       rightTopControls.smoothSlider);
-
-            snapButtonToParam("l_SC",           sidechainControls.scButton);
-            snapButtonToParam("m_SOLOSC",       sidechainControls.soloScButton);
-            snapButtonToParam("p_BYPASS",       parameterButtons.bypassButton);
-            snapButtonToParam("r_KEY",          sidechainControls.keyButton);
-            snapButtonToParam("v_DELTA",        parameterButtons.deltaButton);
-            snapButtonToParam("j_HPFORDER",     sidechainControls.hpfOrderButton);
-            snapButtonToParam("k_LPFORDER",     sidechainControls.lpfOrderButton);
-            
-            // Sincronizar botones momentáneos desde parámetros
-            syncBypassFromParam();
-            syncDeltaFromParam();
-            syncSoloSCFromParam();
-            syncExtKeyFromParam();
-        } 
-        else if (presetName.startsWith("General_") || presetName.startsWith("Drums_") || 
-                 presetName.startsWith("Guitars_")) {
-            // Es un factory preset con prefijo de categoría - cargar desde BinaryData
-            // presetName ya viene con prefijo completo desde el mapeo
-            
-            // Convertir el nombre a formato de recurso BinaryData
-            juce::String resourceName = presetName + "_preset";
-            
-            // Buscar el recurso en BinaryData
-            for (int i = 0; i < BinaryData::namedResourceListSize; ++i) {
-                if (resourceName == BinaryData::namedResourceList[i]) {
-                    // Cargar el preset desde BinaryData
-                    int dataSize = 0;
-                    const char* data = BinaryData::getNamedResource(BinaryData::namedResourceList[i], dataSize);
-                    
-                    if (data != nullptr && dataSize > 0) {
-                        // Parsear el XML desde memoria
-                        juce::String xmlContent(data, dataSize);
-                        juce::XmlDocument xmlDoc(xmlContent);
-                        std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
-                        
-                        if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
-                            auto stateTree = juce::ValueTree::fromXml(*xmlState);
-                            processor.apvts.replaceState(stateTree);
-                            
-                            // Para Factory Presets, SIEMPRE activar graphics independientemente del UISettings
-                            // Esto asegura que los usuarios siempre vean las formas de onda en los presets de fábrica
-                            applyGraphicsSideEffects(true); // Siempre activar envolventes para factory presets
-                            
-                            // Queue las actualizaciones de parámetros para botones momentáneos
-                            queueParameterUpdate("p_BYPASS", 0.0f);
-                            queueParameterUpdate("m_SOLOSC", 0.0f);
-                            queueParameterUpdate("v_DELTA", 0.0f); // Asegurar DELTA en 0 para factory presets
-                            
-                            // Sincronizar botones momentáneos desde parámetros
-                            syncBypassFromParam();
-                            syncDeltaFromParam();
-                            syncSoloSCFromParam();
-                            syncExtKeyFromParam();
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-        else {
-            // Es un user preset - cargar desde archivo
-            juce::File presetFile = getPresetsFolder().getChildFile(presetName + ".preset");
-            
-            if (presetFile.existsAsFile()) {
-                juce::XmlDocument xmlDoc(presetFile);
-                std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
-                
-                if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
-                    auto stateTree = juce::ValueTree::fromXml(*xmlState);
-                    processor.apvts.replaceState(stateTree);
-                    
-                    // Restaurar estado del botón graphics si está presente
-                    auto uiSettings = stateTree.getChildWithName("UISettings");
-                    if (uiSettings.isValid()) {
-                        bool showGraphics = uiSettings.getProperty("displayGraphicsEnvelopes", true);
-                        applyGraphicsSideEffects(showGraphics);
-                    } else {
-                        // Si no hay UISettings guardado, mantener el estado actual del botón
-                        // No cambiar nada, usar el estado que ya tiene el plugin
-                    }
-                    
-                    // Queue actualizaciones de parámetros para botones momentáneos
-                    queueParameterUpdate("p_BYPASS", 0.0f);
-                    queueParameterUpdate("m_SOLOSC", 0.0f);
-                    queueParameterUpdate("v_DELTA", 0.0f); // Asegurar DELTA en 0 para user presets
-                    
-                    // Sincronizar botones momentáneos desde parámetros
-                    syncBypassFromParam();
-                    syncDeltaFromParam();
-                    syncSoloSCFromParam();
-                    syncExtKeyFromParam();
-                }
-            }
-        }
+        // Cargar el preset usando la función reutilizable
+        loadPresetByName(presetName);
         
         // Actualizar estado en processor
         processor.setLastPreset(selectedId);
-        
-        // Para mostrar en el menú, usar nombre limpio sin prefijos
-        juce::String displayName = presetName;
-        if (presetName.startsWith("General_")) {
-            displayName = "[F] " + presetName.substring(8).replace("_", " ");
-        } else if (presetName.startsWith("Drums_")) {
-            displayName = "[F] " + presetName.substring(6).replace("_", " ");
-        } else if (presetName.startsWith("Guitars_")) {
-            displayName = "[F] " + presetName.substring(8).replace("_", " ");
-        }
-        
-        processor.setPresetDisplayText(displayName);
-        processor.setPresetTextItalic(false);
-        presetArea.presetMenu.setTextItalic(false);
-        
-        // Actualizar sliders desde APVTS
-        updateSliderValues();
-        
-        // Actualizar la gráfica de transferencia con los valores actuales
-        // Es necesario obtener los valores directamente de los parámetros
-        // porque los sliders pueden no estar actualizados todavía
-        if (auto* thdParam = processor.apvts.getRawParameterValue("b_THD")) {
-            transferDisplay.setThreshold(thdParam->load());
-        }
-        if (auto* ratioParam = processor.apvts.getRawParameterValue("c_RATIO")) {
-            transferDisplay.setRatio(ratioParam->load());
-        }
-        if (auto* kneeParam = processor.apvts.getRawParameterValue("q_KNEE")) {
-            transferDisplay.setKnee(kneeParam->load());
-        }
-        updateTransferDisplay();
-        
-        // Borrar el historial de undos DESPUÉS de haber establecido todos los valores.
-        // Esto previene que los cambios de parámetros se registren en el historial de undo
-        undoManager.clearUndoHistory();
-        
-        // Asegurar que el transfer display se actualice después de limpiar el historial de undo
-        updateTransferDisplay();
-        
-        // Nota: el flag isLoadingPreset se resetea automáticamente por el destructor LoadingGuard
     };
     
     addAndMakeVisible(presetArea.presetMenu);
@@ -3005,23 +2735,303 @@ void JCBTransientAudioProcessorEditor::deletePresetFile()
             juce::File presetFile = getPresetsFolder().getChildFile(presetName + ".preset");
             
             if (presetFile.existsAsFile()) {
+                // Obtener el preset actual antes de borrar
+                juce::String currentDisplayText = processor.getPresetDisplayText();
+                juce::String currentPresetName = currentDisplayText.endsWith("*") ?
+                    currentDisplayText.dropLastCharacters(1).trimEnd() : currentDisplayText;
+                
+                // Borrar el archivo
                 presetFile.moveToTrash();
                 
                 // Actualizar el menú
                 refreshPresetMenu();
                 
-                // Dejar el menú sin selección y sin texto
-                presetArea.presetMenu.setSelectedId(0);
-                presetArea.presetMenu.setTextWhenNothingSelected("");
-                presetArea.presetMenu.setTextItalic(false);
-                processor.setPresetDisplayText("");
-                processor.setPresetTextItalic(false);
-                processor.setLastPreset(0);
+                // Verificar si el preset borrado era el actualmente seleccionado
+                const bool deletedWasCurrent = (presetName == currentPresetName);
                 
-                // NO cargar DEFAULT - dejar los parámetros como están
+                if (deletedWasCurrent) {
+                    // Volver a DEFAULT si borramos el preset actual
+                    const int defaultId = 1; // ID de DEFAULT en el menú
+                    
+                    // Seleccionar DEFAULT sin notificar (evita reentrancia)
+                    presetArea.presetMenu.setSelectedIdWithoutNotification(defaultId);
+                    
+                    // Cargar DEFAULT usando la función unificada
+                    loadPresetByName("DEFAULT");
+                    
+                    // Actualizar estado del processor
+                    processor.setLastPreset(defaultId);
+                    processor.setPresetDisplayText("DEFAULT");
+                    processor.setPresetTextItalic(false);
+                    presetArea.presetMenu.setTextItalic(false);
+                    
+                    // Actualizar botones dependientes del contexto
+                    juce::MessageManager::callAsync([this]{ updateButtonStates(); });
+                } else {
+                    // Si borraste otro preset distinto al actual, mantener el actual
+                    // Re-seleccionar el preset actual en el menú si sigue existiendo
+                    if (processor.getLastPreset() > 0) {
+                        presetArea.presetMenu.setSelectedIdWithoutNotification(processor.getLastPreset());
+                    }
+                    
+                    juce::MessageManager::callAsync([this]{ updateButtonStates(); });
+                }
             }
         }
     });
+}
+
+void JCBTransientAudioProcessorEditor::loadPresetByName(const juce::String& presetName)
+{
+    if (presetName.isEmpty()) return;
+    
+    // Desactivar botones momentáneos antes de cargar preset
+    if (parameterButtons.bypassButton.getToggleState()) {
+        parameterButtons.bypassButton.setToggleState(false, juce::dontSendNotification);
+    }
+    if (parameterButtons.deltaButton.getToggleState()) {
+        parameterButtons.deltaButton.setToggleState(false, juce::dontSendNotification);
+    }
+    if (sidechainControls.soloScButton.getToggleState()) {
+        sidechainControls.soloScButton.setToggleState(false, juce::dontSendNotification);
+    }
+    
+    // Guard de scope para asegurar que el flag siempre se resetea
+    struct LoadingGuard {
+        bool& flag;
+        const bool prev;
+        explicit LoadingGuard(bool& f) : flag(f), prev(f) { flag = true; }
+        ~LoadingGuard() { flag = prev; }
+    } guard(isLoadingPreset);
+    
+    // Pre-reset: apagar UI de botones momentáneos y aplicar efectos
+    parameterButtons.bypassButton.setToggleState(false, juce::dontSendNotification);
+    applyBypassSideEffects(false);
+    
+    parameterButtons.deltaButton.setToggleState(false, juce::dontSendNotification);
+    applyDeltaSideEffects(false);
+    
+    sidechainControls.soloScButton.setToggleState(false, juce::dontSendNotification);
+    applySoloSCSideEffects(false);
+    
+    sidechainControls.keyButton.setToggleState(false, juce::dontSendNotification);
+    applyExtKeySideEffects(false);
+    
+    if (presetName == "DEFAULT")
+    {
+        auto& apvts = processor.apvts;
+
+        // Helpers: set a default / set a specific normalised value [0..1] con gestos
+        auto setParamNorm = [&](const char* id, float norm)
+        {
+            if (auto* p = apvts.getParameter(id))
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+            {
+                rp->beginChangeGesture();
+                rp->setValueNotifyingHost(norm);
+                rp->endChangeGesture();
+            }
+        };
+
+        auto setParamDefault = [&](const char* id)
+        {
+            if (auto* p = apvts.getParameter(id))
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+                setParamNorm(id, rp->getDefaultValue());
+        };
+
+        if (auto* um = apvts.undoManager)
+            um->beginNewTransaction("Load DEFAULT");
+
+        // 1) Reset de todos los parámetros persistentes a su default
+        setParamDefault("a_TRIM");
+        setParamDefault("b_ATTACK_GAIN");
+        setParamDefault("c_SUSTAIN_GAIN");
+        setParamDefault("d_ATK");
+        setParamDefault("e_REL");
+        setParamDefault("f_HOLD");
+        setParamDefault("h_DELTAMODE");
+        setParamDefault("i_MAKEUP");
+        setParamDefault("j_HPF");
+        setParamDefault("j_HPFORDER");
+        setParamDefault("k_LPF");
+        setParamDefault("k_LPFORDER");
+        setParamDefault("l_SC");
+        setParamDefault("n_LOOKAHEAD");
+        setParamDefault("o_DRYWET");
+        setParamDefault("q_SENSITIVITY");
+        setParamDefault("r_KEY");
+        setParamDefault("u_SOFTCLIP");
+        setParamDefault("y_SCTRIM");
+        setParamDefault("z_SMOOTH");
+
+        // 2) Momentary: forzar a 0 SIEMPRE
+        setParamNorm("p_BYPASS", 0.0f);
+        setParamNorm("m_SOLOSC", 0.0f);
+        setParamNorm("v_DELTA",  0.0f);
+
+        // 3) Graphics baseline
+        const bool defaultGraphicsOn = true;
+        applyGraphicsSideEffects(defaultGraphicsOn);
+
+        // 4) Empujar valores a Gen~ inmediatamente
+        for (int i = 0; i < JCBTransient::num_params(); ++i)
+        {
+            auto id = juce::String(JCBTransient::getparametername(processor.getPluginState(), i));
+            if (auto* rv = apvts.getRawParameterValue(id))
+            {
+                float v = rv->load();
+                if (id == "d_ATK" && v < 0.f)   v = 0.f;
+                if (id == "e_REL" && v < 0.1f)  v = 0.1f;
+                JCBTransient::setparameter(processor.getPluginState(), i, v, nullptr);
+            }
+        }
+
+        // 5) Alinear UI sin notificaciones en cascada
+        auto snapSliderToParam = [&](const char* id, juce::Slider& s)
+        {
+            if (auto* p = apvts.getParameter(id))
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+            {
+                const float raw = rp->convertFrom0to1(rp->getValue());
+                s.setValue(raw, juce::dontSendNotification);
+            }
+        };
+        auto snapButtonToParam = [&](const char* id, juce::Button& b)
+        {
+            if (auto* p = apvts.getParameter(id))
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+                b.setToggleState(rp->getValue() >= 0.5f, juce::dontSendNotification);
+        };
+
+        snapSliderToParam("a_TRIM",         trimSlider);
+        snapSliderToParam("b_ATTACK_GAIN",  leftTopKnobs.attackSlider);
+        snapSliderToParam("c_SUSTAIN_GAIN", leftTopKnobs.sustainSlider);
+        snapSliderToParam("d_ATK",          rightBottomKnobs.atkSlider);
+        snapSliderToParam("e_REL",          rightBottomKnobs.relSlider);
+        snapSliderToParam("f_HOLD",         rightBottomKnobs.holdSlider);
+        snapSliderToParam("q_SENSITIVITY",  leftTopKnobs.sensSlider);
+        snapSliderToParam("i_MAKEUP",       makeupSlider);
+        snapSliderToParam("j_HPF",          sidechainControls.hpfSlider);
+        snapSliderToParam("k_LPF",          sidechainControls.lpfSlider);
+        snapSliderToParam("n_LOOKAHEAD",    leftBottomKnobs.lookaheadSlider);
+        snapSliderToParam("o_DRYWET",       leftBottomKnobs.drywetSlider);
+        snapSliderToParam("u_SOFTCLIP",     leftBottomKnobs.clipSlider);
+        snapSliderToParam("y_SCTRIM",       scTrimSlider);
+        snapSliderToParam("z_SMOOTH",       rightTopControls.smoothSlider);
+
+        snapButtonToParam("l_SC",           sidechainControls.scButton);
+        snapButtonToParam("m_SOLOSC",       sidechainControls.soloScButton);
+        snapButtonToParam("p_BYPASS",       parameterButtons.bypassButton);
+        snapButtonToParam("r_KEY",          sidechainControls.keyButton);
+        snapButtonToParam("v_DELTA",        parameterButtons.deltaButton);
+        snapButtonToParam("j_HPFORDER",     sidechainControls.hpfOrderButton);
+        snapButtonToParam("k_LPFORDER",     sidechainControls.lpfOrderButton);
+        
+        // h_DELTAMODE is handled by the dmodeButton (custom attachment)
+        if (auto* dmodeParam = apvts.getRawParameterValue("h_DELTAMODE")) {
+            float dmodeValue = dmodeParam->load();
+            // Update the dmode button state based on the parameter value
+            bool isSust = (dmodeValue > 1.5f); // 2.0 = SUST, 0.0 = TRANS
+            rightTopControls.dmodeButton.setToggleState(isSust, juce::dontSendNotification);
+        }
+        
+        // Sincronizar botones momentáneos desde parámetros
+        syncBypassFromParam();
+        syncDeltaFromParam();
+        syncSoloSCFromParam();
+        syncExtKeyFromParam();
+    } 
+    else if (presetName.startsWith("General_") || presetName.startsWith("Drums_") || 
+             presetName.startsWith("Guitars_")) {
+        // Es un factory preset con prefijo de categoría
+        juce::String resourceName = presetName + "_preset";
+        
+        for (int i = 0; i < BinaryData::namedResourceListSize; ++i) {
+            if (resourceName == BinaryData::namedResourceList[i]) {
+                int dataSize = 0;
+                const char* data = BinaryData::getNamedResource(BinaryData::namedResourceList[i], dataSize);
+                
+                if (data != nullptr && dataSize > 0) {
+                    juce::String xmlContent(data, dataSize);
+                    juce::XmlDocument xmlDoc(xmlContent);
+                    std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
+                    
+                    if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
+                        auto stateTree = juce::ValueTree::fromXml(*xmlState);
+                        processor.apvts.replaceState(stateTree);
+                        
+                        applyGraphicsSideEffects(true); // Siempre activar para factory presets
+                        
+                        queueParameterUpdate("p_BYPASS", 0.0f);
+                        queueParameterUpdate("m_SOLOSC", 0.0f);
+                        queueParameterUpdate("v_DELTA", 0.0f);
+                        
+                        syncBypassFromParam();
+                        syncDeltaFromParam();
+                        syncSoloSCFromParam();
+                        syncExtKeyFromParam();
+                    }
+                }
+                break;
+            }
+        }
+    }
+    else {
+        // Es un user preset
+        juce::File presetFile = getPresetsFolder().getChildFile(presetName + ".preset");
+        
+        if (presetFile.existsAsFile()) {
+            juce::XmlDocument xmlDoc(presetFile);
+            std::unique_ptr<juce::XmlElement> xmlState(xmlDoc.getDocumentElement());
+            
+            if (xmlState != nullptr && xmlState->hasTagName(processor.apvts.state.getType())) {
+                auto stateTree = juce::ValueTree::fromXml(*xmlState);
+                processor.apvts.replaceState(stateTree);
+                
+                auto uiSettings = stateTree.getChildWithName("UISettings");
+                if (uiSettings.isValid()) {
+                    bool showGraphics = uiSettings.getProperty("displayGraphicsEnvelopes", true);
+                    applyGraphicsSideEffects(showGraphics);
+                }
+                
+                queueParameterUpdate("p_BYPASS", 0.0f);
+                queueParameterUpdate("m_SOLOSC", 0.0f);
+                queueParameterUpdate("v_DELTA", 0.0f);
+                
+                syncBypassFromParam();
+                syncDeltaFromParam();
+                syncSoloSCFromParam();
+                syncExtKeyFromParam();
+            }
+        }
+    }
+    
+    // Para mostrar en el menú, usar nombre limpio sin prefijos
+    juce::String displayName = presetName;
+    if (presetName.startsWith("General_")) {
+        displayName = "[F] " + presetName.substring(8).replace("_", " ");
+    } else if (presetName.startsWith("Drums_")) {
+        displayName = "[F] " + presetName.substring(6).replace("_", " ");
+    } else if (presetName.startsWith("Guitars_")) {
+        displayName = "[F] " + presetName.substring(8).replace("_", " ");
+    }
+    
+    processor.setPresetDisplayText(displayName);
+    processor.setPresetTextItalic(false);
+    presetArea.presetMenu.setTextItalic(false);
+    
+    // Actualizar sliders desde APVTS
+    updateSliderValues();
+    
+    // Actualizar la gráfica de transferencia
+    updateTransferDisplay();
+    
+    // Borrar el historial de undos
+    undoManager.clearUndoHistory();
+    
+    // Asegurar que el transfer display se actualice
+    updateTransferDisplay();
 }
 
 void JCBTransientAudioProcessorEditor::selectNextPreset()
@@ -3272,7 +3282,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     if (currentLanguage == TooltipLanguage::Spanish)
     {
         // Spanish tooltips
-        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v0.9.2 beta\nPlugin de audio open source\nClick para créditos");
+        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v1.0.0-alpha.1\nPlugin de audio open source\nClick para créditos");
         if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 100%");
@@ -3314,7 +3324,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     else
 	{
 	    // English tooltips
-	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v0.9.2 beta\nOpen source audio plugin\nClick for credits");
+	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v1.0.0-alpha.1\nOpen source audio plugin\nClick for credits");
 	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 100%");

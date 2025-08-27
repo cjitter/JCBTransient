@@ -46,6 +46,10 @@ attack_env = in6;
 sustain_env = in7;
 smoothSensitivity = in8;
 
+// Sensibilidades diferenciadas
+sensAttack  = smoothSensitivity;
+sensSustain = clamp(smoothSensitivity / 0.80, 0, 1);
+
 // =============================================================================
 // PROCESAMIENTO CANAL IZQUIERDO
 // =============================================================================
@@ -62,11 +66,11 @@ if(delta_control > 0.01) {
     
     // Calcular las tres posibles señales delta
     // 1. Attack only
-    gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
+    gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
     delta_attack_only = (in1 * gain_attack_only) - in1;
     
     // 2. Sustain only
-    gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
+    gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
     delta_sustain_only = (in1 * gain_sustain_only) - in1;
     
     // 3. Both (completo)
@@ -113,10 +117,10 @@ if(rightDeltaControl > 0.01) {
     right_delta_mode = smoothRange;  // 0-2
     
     // Calcular las tres posibles señales delta
-    right_gain_attack_only = mix(1, attack_factor, attack_env * smoothSensitivity);
+    right_gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
     right_delta_attack_only = (in2 * right_gain_attack_only) - in2;
     
-    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * smoothSensitivity);
+    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
     right_delta_sustain_only = (in2 * right_gain_sustain_only) - in2;
     
     right_delta_both = expandedRight - in2;

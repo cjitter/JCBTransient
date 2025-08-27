@@ -59,7 +59,7 @@ leftSaturated = clamp(leftSaturated, -maxOutput, maxOutput);
 // Mezclar señal original con saturada según el parámetro
 leftProcessedOutput = mix(leftDryWetMixed, leftSaturated, saturationAmount);
 
-// Bypass final
+// Bypass final: 0 → Dry (in3), 1 → Wet procesado (leftProcessedOutput)
 leftFinalOutput = mix(in3, leftProcessedOutput, smoothBypassAmount);
 
 // =============================================================================
@@ -82,7 +82,7 @@ rightSaturated = clamp(rightSaturated, -maxOutput, maxOutput);
 // Mezclar señal original con saturada según el parámetro
 rightProcessedOutput = mix(rightDryWetMixed, rightSaturated, saturationAmount);
 
-// Bypass final
+// Bypass final: 0 → Dry (in4), 1 → Wet procesado (rightProcessedOutput)
 rightFinalOutput = mix(in4, rightProcessedOutput, smoothBypassAmount);
 
 // =============================================================================

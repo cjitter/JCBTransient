@@ -42,14 +42,12 @@ History lpfOrderHistory(0);            // Para suavizar cambio de orden LPF
 // CONSTANTES
 SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos
 SMOOTH_PARAM_FACTOR = 0.001;           // Factor de suavizado para nuevos parámetros
-BUTTERWORTH_Q = 1.0;                   // Q = 1 para respuesta plana sin resonancia
+BUTTERWORTH_Q = 0.707;                 // Q Butterworth auténtico (12/24 dB/oct sin resonancia)
 
 // =============================================================================
 // PROCESAMIENTO
 // =============================================================================
 
-// Pre-procesar señal de sidechain
-sidechainMixedSignal = in1 * 0.707;
 
 // Smoothing de parámetros
 smoothHpfFreq = (hpfFreqHistory * SMOOTH_HISTORY_FACTOR) + (j_HPF * SMOOTH_PARAM_FACTOR);
@@ -71,8 +69,6 @@ lpfOrderHistoryNext = fixdenorm(smoothLpfOrder);
 hpfOrderDiscrete = smoothHpfOrder < 0.5 ? 0 : 1;
 lpfOrderDiscrete = smoothLpfOrder < 0.5 ? 0 : 1;
 
-// Pre-procesar señal de sidechain
-sidechainMixedSignal = in1 * 0.707;
 
 // =============================================================================
 // COEFICIENTES DE FILTROS BUTTERWORTH
@@ -118,7 +114,7 @@ hpfCoeffB2 = b2_hpf;
 // =============================================================================
 
 // Primera etapa LPF (12 dB/oct)
-lpfInput = sidechainMixedSignal * lpfCoeffA2;
+lpfInput = in1 * lpfCoeffA2;
 lpfFromHistory1 = lpfHistory3 * lpfCoeffA1;
 lpfFromHistory2 = lpfHistory1 * lpfCoeffA0;
 lpfFeedback1 = lpfHistory2 * lpfCoeffB2;
@@ -127,7 +123,7 @@ lpfFilteredSignal = ((((lpfFromHistory2 + lpfFromHistory1)) + lpfInput)) - ((lpf
 
 lpfHistory1Next = fixdenorm(lpfHistory3);
 lpfHistory2Next = fixdenorm(lpfHistory4);
-lpfHistory3Next = fixdenorm(sidechainMixedSignal);
+lpfHistory3Next = fixdenorm(in1);
 lpfHistory4Next = fixdenorm(lpfFilteredSignal);
 
 // Segunda etapa LPF (para 24 dB/oct)
@@ -147,7 +143,7 @@ lpfHistory8Next = fixdenorm(lpfStage2FilteredSignal);
 lpfFinalSignal = lpfOrderDiscrete == 0 ? lpfFilteredSignal : lpfStage2FilteredSignal;
 
 // Mezclar señal directa con LPF según ONSIDECHAIN
-lpfMixedSignal = mix(sidechainMixedSignal, lpfFinalSignal, smoothScEnable);
+lpfMixedSignal = mix(in1, lpfFinalSignal, smoothScEnable);
 
 // =============================================================================
 // HPF - FILTRO PASO ALTO

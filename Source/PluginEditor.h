@@ -351,7 +351,7 @@ private:
     //==========================================================================
     
     // Título y versión en la parte inferior (combinado como ExpansorGate)
-    juce::TextButton titleLink{"JCBTransient v0.9.2 beta"};
+    juce::TextButton titleLink{"JCBTransient v1.0.0-alpha.1"};
     
     // Imágenes de fondo
     juce::ImageComponent backgroundImage;
@@ -893,6 +893,7 @@ private:
     void savePresetFile();
     void saveAsPresetFile();
     void deletePresetFile();
+    void loadPresetByName(const juce::String& presetName);
     void refreshPresetMenu();
     void selectNextPreset();
     void selectPreviousPreset();
