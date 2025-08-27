@@ -78,6 +78,7 @@ cmake --build build-release   # Para Release
 - **Gestión completa de presets** con funciones de guardar, guardar como, eliminar, y navegación.
 - **Monitor solo sidechain**, y escucha directa del filtrado sidechain.
 - **Bypass interno**, no automatizable, con transición suave.
+- **Bypass en Pro Tools** suavizado y alineado con el lookahead para evitar clicks al conmutar.
 - **Cambio de idioma** dinámico para tooltips (Español/Inglés).
 - **Visualización del diagrama de bloques** con acceso directo al código GenExpr por sección.
 
