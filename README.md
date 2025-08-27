@@ -129,6 +129,6 @@ Los tests validan los formatos VST3 y AU del plugin.
 - Portar a SuperCollider los bloques de GenExpr, y/o crear UGen.
 - Hacer el Max For Live device.
 
----
+--
 
 *© 2025 Juan Carlos Blancas – JCBTransient v1.0.0-alpha.1*
