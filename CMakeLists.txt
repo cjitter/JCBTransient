@@ -17,6 +17,7 @@
 #
 # ==============================================================================
 
+
 cmake_minimum_required(VERSION 3.20)
 
 project(JCBTransient VERSION 0.9.2)
@@ -70,7 +71,7 @@ juce_add_plugin(JCBTransient
         PLUGIN_NAME "JCBTransient"
         PRODUCT_NAME "JCBTransient"
         VERSION 0.9.2
-        DESCRIPTION "Stereo-linked feedforward compressor with external sidechain, parallel processing and lookahead"
+        DESCRIPTION "Stereo-linked transient shaper with lookahead and sidechain"
 
         # Información de la empresa
         COMPANY_NAME "Coeval"
@@ -135,6 +136,12 @@ juce_add_binary_data(JCBTransient_BinaryData
         # Presets de fábrica
         Assets/FactoryPresets/General_Sustainer.preset
         Assets/FactoryPresets/General_Ataquer.preset
+        # Presets de José Peña
+        Assets/FactoryPresets/Drums_Kick_Body.preset
+        Assets/FactoryPresets/Drums_Kick_Short.preset
+        Assets/FactoryPresets/Drums_Snare.preset
+        Assets/FactoryPresets/Guitars_Guitar.preset
+
 )
 
 # Linkear binary data al plugin

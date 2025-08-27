@@ -896,6 +896,7 @@ private:
     void refreshPresetMenu();
     void selectNextPreset();
     void selectPreviousPreset();
+    int getCurrentPresetBaseId() const;
     void resetGuiSize();
     void showCustomConfirmDialog(const juce::String& message, const juce::String& subMessage, 
                                   std::function<void(bool)> callback, 
@@ -939,6 +940,23 @@ private:
     //==========================================================================
     void queueParameterUpdate(const juce::String& paramID, float normalizedValue);
     void processPendingParameterUpdates();
+    
+    //==========================================================================
+    // UI SIDE EFFECTS HELPERS
+    //==========================================================================
+    void applyBypassSideEffects(bool isOn);
+    void applyDeltaSideEffects(bool isOn);
+    void applySoloSCSideEffects(bool isOn);
+    void applyGraphicsSideEffects(bool envelopesVisible);
+    void applyExtKeySideEffects(bool isOn);
+    
+    //==========================================================================
+    // SYNC FROM PARAMETERS
+    //==========================================================================
+    void syncBypassFromParam();
+    void syncDeltaFromParam();
+    void syncSoloSCFromParam();
+    void syncExtKeyFromParam();
     
     //==========================================================================
     // VARIABLES DE STATE

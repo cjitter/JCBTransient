@@ -18,7 +18,7 @@
 //==============================================================================
 JCBTransientAudioProcessor::JCBTransientAudioProcessor()
     : juce::AudioProcessor(createBusesProperties()),
-      apvts(*this, nullptr, "PARAMETERS", createParameterLayout()),  // nullptr = no automatic undo (proven solution tested on jr-granular)
+      apvts(*this, nullptr, "PARAMETERS", createParameterLayout()),
       m_CurrentBufferSize(0),
       editorSize(1260, 360),
       lastPreset(0),
@@ -262,212 +262,12 @@ void JCBTransientAudioProcessor::releaseResources()
     hostBypassMirror.store(false, std::memory_order_relaxed);
 }
 
-//==============================================================================
-// PROCESAMIENTO DE AUDIO
-//==============================================================================
-// void JCBTransientAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer,
-//                                                       juce::MidiBuffer& midiMessages)
-// {
-//     juce::ignoreUnused(midiMessages);
-//     juce::ScopedNoDenormals noDenormals;
-//
-//     const int numSamples = buffer.getNumSamples();
-//     const int numChannels = buffer.getNumChannels();
-//     const int delaySamples = getLatencySamples();
-//
-//     // Si no hay latencia reportada, salir
-//     if (delaySamples <= 0)
-//         return;
-//
-//     // Protección thread-safe del buffer de delay
-//     const juce::SpinLock::ScopedLockType sl(bypassDelayLock);
-//
-//     // Redimensionar el buffer de delay si cambian canales/latencia
-//     if (bypassDelayBuffer.getNumChannels() != numChannels
-//      || bypassDelayBuffer.getNumSamples() != delaySamples)
-//     {
-//         bypassDelayBuffer.setSize(numChannels, delaySamples);
-//         bypassDelayBuffer.clear();
-//         bypassDelayWritePos = 0;
-//     }
-//
-//     // Buffer circular: leer delayed, escribir current
-//     for (int i = 0; i < numSamples; ++i)
-//     {
-//         const int readPos = bypassDelayWritePos;
-//
-//         for (int ch = 0; ch < numChannels; ++ch)
-//         {
-//             float* out = buffer.getWritePointer(ch);
-//             float* dline = bypassDelayBuffer.getWritePointer(ch);
-//
-//             const float delayed = dline[readPos];
-//             dline[readPos] = out[i];
-//             out[i] = delayed;
-//         }
-//
-//         bypassDelayWritePos = (bypassDelayWritePos + 1) % delaySamples;
-//     }
-//
-//     // Crossfade equal-power solo en el primer bloque tras entrar en bypass
-//     const bool justEnteredBypass = !wasHostBypassed;
-//     wasHostBypassed = true;
-//
-//     // Adaptar fade dinámicamente (limitado a potencias de 2)
-//     int rawFade = juce::jlimit(32, 192, buffer.getNumSamples());
-//     // Snap a la potencia de 2 más cercana (32, 64, 128, 192)
-//     int targetFade = 64;
-//     if (rawFade < 64)       targetFade = 32;
-//     else if (rawFade < 128) targetFade = 64;
-//     else if (rawFade < 192) targetFade = 128;
-//     else                    targetFade = 192;
-//
-//     if (bypassFadeLen != targetFade)
-//         bypassFadeLen = targetFade;
-//
-//     const int fadeLen = juce::jmin(bypassFadeLen, numSamples, lastWetTailLen);
-//     if (justEnteredBypass && fadeLen > 0)
-//     {
-//         const int tail0 = lastWetTailLen - fadeLen; // inicio en la cola WET guardada
-//
-//         for (int ch = 0; ch < numChannels; ++ch)
-//         {
-//             float*       out  = buffer.getWritePointer(ch);     // DRY ya compensado
-//             const float* tail = lastWetTail.getReadPointer(ch); // WET del bloque activo previo
-//
-//             for (int n = 0; n < fadeLen; ++n)
-//             {
-//                 const float a    = (float) n / (float) fadeLen; // 0..1
-//                 const float gDry = std::sqrt(a);                // equal-power
-//                 const float gWet = std::sqrt(1.0f - a);
-//
-//                 const float wetPrev = tail[tail0 + n];
-//                 const float dryNow  = out[n];
-//                 out[n] = dryNow * gDry + wetPrev * gWet;
-//             }
-//         }
-//     }
-// }
-
 void JCBTransientAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ignoreUnused(midi);
     processBlockCommon(buffer, /*hostWantsBypass*/ true);
 }
 
-// void JCBTransientAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
-// {
-//     juce::ScopedNoDenormals noDenormals;
-//     const int numSamples = buffer.getNumSamples();
-//
-//     // Ajuste dinámico de buffers según block size
-//     if (grBuffer.getNumChannels() != getTotalNumOutputChannels()
-//      || grBuffer.getNumSamples() != numSamples)
-//         grBuffer.setSize(getTotalNumOutputChannels(), numSamples, false, false, true);
-//     if (trimInputBuffer.getNumChannels() != 2
-//      || trimInputBuffer.getNumSamples() != numSamples)
-//         trimInputBuffer.setSize(2, numSamples, false, false, true);
-//     if (sidechainBuffer.getNumChannels() != getTotalNumInputChannels()
-//      || sidechainBuffer.getNumSamples() != numSamples)
-//         sidechainBuffer.setSize(getTotalNumInputChannels(), numSamples, false, false, true);
-//
-//     // Resize de waveform buffers con try_lock para evitar bloqueos
-//     {
-//         std::unique_lock<std::mutex> lock(waveformMutex, std::try_to_lock);
-//         if (lock.owns_lock())
-//         {
-//             if (currentInputSamples.size() < static_cast<size_t>(numSamples))
-//                 currentInputSamples.resize(numSamples);
-//             if (currentProcessedSamples.size() < static_cast<size_t>(numSamples))
-//                 currentProcessedSamples.resize(numSamples);
-//         }
-//     }
-//
-//     assureBufferSize(numSamples);
-//
-//     // Debounce de lookahead (commit coordinado Gen + host)
-//     if (laCommitPending.load(std::memory_order_acquire))
-//     {
-//         const uint32_t now = juce::Time::getMillisecondCounter();
-//         const uint32_t last = lastLAChangeMs.load(std::memory_order_relaxed);
-//         if ((int)(now - last) > laDebounceMs)
-//         {
-//             // Aplicar a Gen~ usando índice cacheado
-//             if (genIdxLookahead >= 0) {
-//                 const float ms = stagedLookaheadMs.load(std::memory_order_relaxed);
-//                 JCBTransient::setparameter(m_PluginState, genIdxLookahead, ms, nullptr);
-//             }
-//
-//             // Actualizar latencia del host si cambió
-//             const int newL = computeLatencySamples(getSampleRate());
-//             if (newL != pendingLatency.load(std::memory_order_relaxed) && newL != currentLatency)
-//             {
-//                 pendingLatency.store(newL, std::memory_order_relaxed);
-//                 triggerAsyncUpdate(); // setLatencySamples(newL) en message thread
-//             }
-//             laCommitPending.store(false, std::memory_order_release);
-//         }
-//     }
-//
-//     // Procesar audio usando métodos separados
-//     fillGenInputBuffers(buffer);
-//     processGenAudio(numSamples);
-//     fillOutputBuffers(buffer);
-//
-//     // Capturar cola "wet" para suavizar entrada a bypass del host
-//     {
-//         const int numChannels = buffer.getNumChannels();
-//         const int nRequested  = juce::jmin(bypassFadeLen, numSamples);
-//
-//         // Si no hay nada que capturar, deja flags en estado coherente
-//         if (nRequested <= 0 || numChannels <= 0)
-//         {
-//             lastWetTailLen = 0;
-//             wasHostBypassed = false;
-//             bypassFadePos   = -1;
-//         }
-//         else
-//         {
-//             // Reajustar cola si cambian canales o longitud objetivo
-//             if (lastWetTail.getNumChannels() != numChannels
-//              || lastWetTail.getNumSamples()  != nRequested)
-//             {
-//                 lastWetTail.setSize(numChannels, nRequested, false, false, true);
-//                 lastWetTail.clear();
-//                 lastWetTailLen = 0; // evita mezclar con cola antigua
-//             }
-//
-//             // Copiamos las ÚLTIMAS nRequested muestras del buffer ya procesado (wet)
-//             const int srcOffset = numSamples - nRequested;
-//             for (int ch = 0; ch < numChannels; ++ch)
-//             {
-//                 const float* src = buffer.getReadPointer(ch, srcOffset);
-//                 float*       dst = lastWetTail.getWritePointer(ch);
-//                 std::memcpy(dst, src, size_t(nRequested) * sizeof(float));
-//             }
-//             lastWetTailLen = nRequested;
-//
-//             // Estado: este bloque estaba activo (no bypass)
-//             wasHostBypassed = false;
-//             bypassFadePos   = -1; // por si usas acumulador en builds previas
-//         }
-//     }
-//
-//     // Capturar DESPUÉS del procesamiento para usar salidas de Gen~
-//     // Capturar entrada post-TRIM desde salidas 3 y 4 de Gen~
-//     captureInputWaveformData(buffer, numSamples);
-//     // Capturar salida procesada para visualización
-//     captureOutputWaveformData(numSamples);
-//
-//     // Actualizar clip detection (debe ser DESPUÉS del procesamiento completo)
-//     updateClipDetection(buffer, buffer);  // input y output son el mismo buffer al final
-//
-//     // Actualizar medidores
-//     updateInputMeters(buffer);
-//     updateOutputMeters(buffer);
-//     updateSidechainMeters(buffer);
-//     updateAttackSustainGains(buffer.getNumSamples());
-// }
 void JCBTransientAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ignoreUnused(midi);
@@ -480,7 +280,7 @@ void JCBTransientAudioProcessor::processBlockCommon(juce::AudioBuffer<float>& bu
     const int numSamples  = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    // === Ajustes de buffers (idéntico a tu processBlock actual) ===
+    // === Ajustes de buffers (idéntico a processBlock actual) ===
     if (grBuffer.getNumChannels() != getTotalNumOutputChannels()
      || grBuffer.getNumSamples()  != numSamples)
         grBuffer.setSize(getTotalNumOutputChannels(), numSamples, false, false, true);
@@ -1339,7 +1139,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::
        juce::ParameterID("q_SENSITIVITY", versionHint),
        juce::CharPointer_UTF8("Sensitivity"),
        juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.f),
-       1.0f,
+       0.5f,
        juce::String(),
        juce::AudioParameterFloat::genericParameter,
        [](float value, int) { return juce::String(juce::roundToInt(value * 100)) + "%"; },
@@ -1675,9 +1475,7 @@ void JCBTransientAudioProcessor::getStateInformation(juce::MemoryBlock& destData
         if (param.isValid())
             param.setProperty("value", 0.0f, nullptr);
             
-        param = paramsNode.getChildWithProperty("id", "v_DELTA");
-        if (param.isValid())
-            param.setProperty("value", 0.0f, nullptr);
+        // v_DELTA no se resetea - es automatizable y debe guardarse con su valor actual
     }
     
     auto preset = stateCopy.getOrCreateChildWithName("Presets", nullptr);
