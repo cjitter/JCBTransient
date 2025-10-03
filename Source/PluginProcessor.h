@@ -19,6 +19,7 @@
 #include <vector>
 #include <unordered_map>
 #include <atomic>
+#include <cmath>
 
 // Archivos del proyecto
 #include "JCBTransient.h"
@@ -142,8 +143,7 @@ public:
     bool getOutputClipDetected(const int channel) const noexcept;
     bool getSidechainClipDetected(const int channel) const noexcept;
     void resetClipIndicators();
-    
-    
+
     // Datos de forma de onda
     void getWaveformData(std::vector<float>& inputSamples, std::vector<float>& processedSamples) const;
     void getAttackSustainData(std::vector<float>& attackSamples, std::vector<float>& sustainSamples) const;
@@ -183,6 +183,26 @@ private:
     void fillGenInputBuffers(const juce::AudioBuffer<float>& buffer);
     void processGenAudio(int numSamples);
     void fillOutputBuffers(juce::AudioBuffer<float>& buffer);
+
+    // Safety: sanitizar buffers de salida antes de entregar al host
+    inline void sanitizeStereo(float* left, float* right, int numSamples, std::atomic<bool>& tripped) noexcept
+    {
+        bool localTrip = false;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float sampleL = left[i];
+            float sampleR = right ? right[i] : sampleL;
+
+            if (!std::isfinite(sampleL) || sampleL > 8.0f || sampleL < -8.0f) { sampleL = 0.0f; localTrip = true; }
+            if (!std::isfinite(sampleR) || sampleR > 8.0f || sampleR < -8.0f) { sampleR = 0.0f; localTrip = true; }
+
+            left[i] = sampleL;
+            if (right) right[i] = sampleR;
+        }
+
+        if (localTrip)
+            tripped.store(true, std::memory_order_release);
+    }
     
     // Actualizaciones de medidores
     void updateInputMeters(const juce::AudioBuffer<float>& buffer);
@@ -205,6 +225,8 @@ private:
     long m_CurrentBufferSize;
     t_sample** m_InputBuffers;
     t_sample** m_OutputBuffers;
+
+    std::atomic<bool> nanTripped{false};
     
     // Valores de medidores thread-safe
     std::atomic<float> leftInputRMS{-100.0f};
@@ -246,10 +268,7 @@ private:
     std::atomic<bool> inputClipDetected[2] = {false, false};
     std::atomic<bool> outputClipDetected[2] = {false, false};
     std::atomic<bool> sidechainClipDetected[2] = {false, false};
-    
-    
-    
-    
+
     // Flag para indicar destrucción del plugin
     std::atomic<bool> isBeingDestroyed{false};
     
@@ -283,60 +302,6 @@ private:
     ParameterState stateA;
     ParameterState stateB;
     bool isStateA{true};
-    
-    //==============================================================================
-    // // BYPASS COMPENSADO
-    // juce::AudioBuffer<float> bypassDelayBuffer;
-    // int bypassDelayWritePos { 0 };
-    // juce::SpinLock bypassDelayLock;
-    //
-    // // Suavizado de transición de bypass (para Pro Tools)
-    // juce::AudioBuffer<float> lastWetTail;  // cola del último bloque activo
-    // int   lastWetTailLen   { 0 };          // muestras válidas guardadas
-    // bool  wasHostBypassed  { false };      // estado del bloque anterior
-    // int   bypassFadeLen    { 128 };        // 32-64-128 recomendado
-    // int   bypassFadePos    { -1 };         // -1 = inactivo
-    //
-    // // Espejo del bypass del host
-    // std::atomic<bool> hostBypassMirror { false };
-    //
-    // // Helper para leer el parámetro de bypass del host
-    // inline bool isHostBypassed() const noexcept
-    // {
-    //     if (auto* p = getBypassParameter())
-    //         return p->getValue() >= 0.5f;
-    //     return false;
-    // }
-    //
-    // // LATENCIA SEGURA (message thread)
-    // std::atomic<int> pendingLatency { -1 };
-    // int currentLatency = 0;
-    //
-    // // LOOKAHEAD DEBOUNCE
-    // std::atomic<float>   stagedLookaheadMs { 0.0f };
-    // std::atomic<uint32_t> lastLAChangeMs   { 0 };
-    // std::atomic<bool>    laCommitPending   { false };
-    // int                  laDebounceMs      { 140 };
-    //
-    // // Offset intrínseco de Gen~ (0 ya que Gen~ está bien configurado)
-    // std::atomic<int> intrinsicGenOffset { 0 };
-    //
-    // // Helper: calcula latencia en muestras
-    // int computeLatencySamples (double sr) const
-    // {
-    //     if (sr <= 0.0) return 0;
-    //     float latMs = apvts.getRawParameterValue("n_LOOKAHEAD")->load();
-    //     if (! std::isfinite(latMs) || latMs < 0.0f) latMs = 0.0f;
-    //     const int base = juce::roundToInt (latMs * sr / 1000.0);
-    //     return juce::jmax (0, base + intrinsicGenOffset.load(std::memory_order_relaxed));
-    // }
-    //
-    // // Override de AsyncUpdater
-    // void handleAsyncUpdate() override;
-    //
-    // // Cachear índices de gen (evitar búsquedas por nombre)
-    // int genIdxLookahead { -1 };
-    // int genIdxBypass    { -1 };
 
     // ==============================================================================
     // SISTEMA DE BYPASS COMPENSADO

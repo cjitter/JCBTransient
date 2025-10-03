@@ -73,9 +73,9 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Verificar si el host es Logic Pro
     juce::PluginHostType hostInfo;
     if (hostInfo.isLogic()) {
-        titleText = "v1.0.0-alpha.1";  // Solo versión para Logic Pro
+        titleText = "v1.0.0-alpha.2";  // Solo versión para Logic Pro
     } else {
-        titleText = "JCBTransient v1.0.0-alpha.1";  // Nombre completo para otros DAWs
+        titleText = "JCBTransient v1.0.0-alpha.2";  // Nombre completo para otros DAWs
     }
     
     titleLink.setButtonText(titleText);
@@ -795,19 +795,25 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
         processor.toggleAB();
         
         // Actualizar texto del botón para mostrar estado actual
-        topButtons.abStateButton.setButtonText(processor.getIsStateA() ? "A" : "B");
-        
+        const bool isStateA = processor.getIsStateA();
+        topButtons.abStateButton.setButtonText(isStateA ? "A" : "B");
+
         // Retroalimentación visual con colores más evidentes
-        if (processor.getIsStateA()) {
-            // A = Púrpura/Violeta
-            topButtons.abStateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff9c27b0));  // Purple
-            topButtons.abStateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-        } else {
-            // B = Azul
-            topButtons.abStateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2196f3));  // Blue
-            topButtons.abStateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-        }
-        
+        const juce::Colour abColour = isStateA ? juce::Colour(0xff9E35B0)
+                                               : juce::Colour(0xff2196f3);
+        topButtons.abStateButton.setColour(juce::TextButton::buttonColourId, abColour);
+        topButtons.abStateButton.setColour(juce::TextButton::buttonOnColourId, abColour);
+        topButtons.abStateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        topButtons.abStateButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+
+        // Actualizar botón de copia según el nuevo estado
+        topButtons.abCopyButton.setButtonText(isStateA ? "A-B" : "B-A");
+        const bool tooltipsInEnglish = processor.getTooltipLanguageEnglish();
+        if (isStateA)
+            topButtons.abCopyButton.setTooltip(tooltipsInEnglish ? "Copy A to B" : "Copiar A a B");
+        else
+            topButtons.abCopyButton.setTooltip(tooltipsInEnglish ? "Copy B to A" : "Copiar B a A");
+
         repaint();
     }
     else if (button == &topButtons.abCopyButton)
@@ -829,7 +835,7 @@ void JCBTransientAudioProcessorEditor::buttonClicked(juce::Button* button)
         } else {
             processor.copyBtoA();
             // Retroalimentación visual - destello azul a púrpura
-            topButtons.abCopyButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff9c27b0));  // Destello púrpura
+            topButtons.abCopyButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff9E35B0));  // Destello púrpura
             topButtons.abCopyButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
             // Usar SafePointer para prevenir crashes si el editor se destruye antes de que se dispare el timer
             juce::Component::SafePointer<JCBTransientAudioProcessorEditor> safeThis(this);
@@ -1884,11 +1890,14 @@ void JCBTransientAudioProcessorEditor::setupUtilityButtons()
     
     // A/B State button
     topButtons.abStateButton.setClickingTogglesState(false);  // No es toggle, es un indicador
-    topButtons.abStateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff9c27b0));  // Comenzar con púrpura para A
+    const bool isStateA = processor.getIsStateA();
+    const juce::Colour abColour = isStateA ? juce::Colour(0xff9E35B0) : juce::Colour(0xff2196f3);
+    topButtons.abStateButton.setColour(juce::TextButton::buttonColourId, abColour);
+    topButtons.abStateButton.setColour(juce::TextButton::buttonOnColourId, abColour);
     topButtons.abStateButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     topButtons.abStateButton.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     topButtons.abStateButton.addListener(this);
-    topButtons.abStateButton.setButtonText("A");  // Comenzar con A
+    topButtons.abStateButton.setButtonText(isStateA ? "A" : "B");
     addAndMakeVisible(topButtons.abStateButton);
     topButtons.abStateButton.setEnabled(true);  // Now implemented!
     
@@ -1898,9 +1907,13 @@ void JCBTransientAudioProcessorEditor::setupUtilityButtons()
     topButtons.abCopyButton.setColour(juce::TextButton::textColourOffId, DarkTheme::textPrimary);
     topButtons.abCopyButton.setColour(juce::TextButton::textColourOnId, DarkTheme::textPrimary);
     topButtons.abCopyButton.addListener(this);
-    topButtons.abCopyButton.setButtonText("A-B");  // Start showing A to B
+    topButtons.abCopyButton.setButtonText(isStateA ? "A-B" : "B-A");
     addAndMakeVisible(topButtons.abCopyButton);
-    topButtons.abCopyButton.setTooltip("Copy A to B");  // Tooltip inicial
+    const bool tooltipsInEnglish = processor.getTooltipLanguageEnglish();
+    if (isStateA)
+        topButtons.abCopyButton.setTooltip(tooltipsInEnglish ? "Copy A to B" : "Copiar A a B");
+    else
+        topButtons.abCopyButton.setTooltip(tooltipsInEnglish ? "Copy B to A" : "Copiar B a A");
     
     // MIDI Learn button
     utilityButtons.midiLearnButton.setClickingTogglesState(true);
@@ -3282,7 +3295,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     if (currentLanguage == TooltipLanguage::Spanish)
     {
         // Spanish tooltips
-        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v1.0.0-alpha.1\nPlugin de audio open source\nClick para créditos");
+        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v1.0.0-alpha.2\nPlugin de audio open source\nClick para créditos");
         if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 100%");
@@ -3324,7 +3337,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     else
 	{
 	    // English tooltips
-	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v1.0.0-alpha.1\nOpen source audio plugin\nClick for credits");
+	    if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v1.0.0-alpha.2\nOpen source audio plugin\nClick for credits");
 	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 100%");

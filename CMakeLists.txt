@@ -54,6 +54,7 @@ FetchContent_MakeAvailable(JUCE)
 # Opciones de configuración
 option(JUCE_BUILD_AAX "Build AAX format (requires AAX SDK and Pro Tools Developer)" ON)
 option(JUCE_AUTO_INSTALL_PLUGINS "Auto-install plugins after build" ON)
+option(JCB_DISABLE_SANITIZER "Disable runtime output sanitizer (only when debugging issues)" OFF)
 
 # SDK externo opcional (AAX) para macOS
 set(JUCE_AAX_SDK_PATH "$ENV{HOME}/SDK/aax-sdk-2-8-1" CACHE PATH "Ruta al SDK de AAX")
@@ -156,6 +157,10 @@ target_include_directories(JCBTransient PRIVATE
         exported-code/
         exported-code/gen_dsp/
 )
+
+if(JCB_DISABLE_SANITIZER)
+    target_compile_definitions(JCBTransient PRIVATE JCB_DISABLE_SANITIZER=1)
+endif()
 
 # Módulos JUCE - Solo los necesarios (DSP manejado por Gen~)
 target_link_libraries(JCBTransient PRIVATE

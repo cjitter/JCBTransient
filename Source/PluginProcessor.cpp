@@ -334,8 +334,6 @@ void JCBTransientAudioProcessor::processBlockCommon(juce::AudioBuffer<float>& bu
         else                 std::memcpy(inR, inL,  sizeof(float) * (size_t) numSamples);
     }
 
-    // (DIAGNÓSTICO) Sin morph armado.
-
     // === Render WET (Gen~ siempre encendido) ===
     fillGenInputBuffers(buffer);
     processGenAudio(numSamples);
@@ -512,6 +510,26 @@ void JCBTransientAudioProcessor::processBlockCommon(juce::AudioBuffer<float>& bu
                     break;
                 }
             }
+        }
+    }
+
+    // Safety: sanitize final output y recuperar Gen si hubo valores inválidos
+#if !defined(JCB_DISABLE_SANITIZER)
+    sanitizeStereo(wetL, (numChannels > 1 ? wetR : nullptr), numSamples, nanTripped);
+#endif
+
+    if (nanTripped.exchange(false, std::memory_order_acq_rel))
+    {
+        // Resetear el estado de Gen~ y reinyectar parámetros actuales del APVTS
+        JCBTransient::reset(m_PluginState);
+
+        for (int i = 0; i < JCBTransient::num_params(); ++i)
+        {
+            const char* raw = JCBTransient::getparametername(m_PluginState, i);
+            const juce::String paramID(raw ? raw : "");
+
+            if (auto* param = apvts.getRawParameterValue(paramID))
+                JCBTransient::setparameter(m_PluginState, i, param->load(), nullptr);
         }
     }
 
@@ -933,7 +951,7 @@ bool JCBTransientAudioProcessor::isBusesLayoutSupported(const juce::AudioProcess
  * Crear el layout de parámetros del plugin
  * CRÍTICO: Define todos los parámetros del compresor en orden alfabético
  * Incluye configuración de rangos, valores por defecto y metadata para cada parámetro
- * Version hint 22 para versión 1.0.0-alpha.1 - fuerza re-escaneo en hosts
+ * Version hint 22 para versión 1.0.0-alpha.2 - fuerza re-escaneo en hosts
  */
 juce::AudioProcessorValueTreeState::ParameterLayout JCBTransientAudioProcessor::createParameterLayout()
 {
@@ -1436,15 +1454,11 @@ void JCBTransientAudioProcessor::getWaveformData(std::vector<float>& inputSample
     processedSamples = currentProcessedSamples;
 }
 
-
-
-
 bool JCBTransientAudioProcessor::isPlaybackActive() const noexcept
 {
     // Siempre activo para decay permanente como plugins profesionales
     return true;
 }
-
 
 //==============================================================================
 // GESTIÓN DEL EDITOR
@@ -1453,7 +1467,6 @@ juce::AudioProcessorEditor* JCBTransientAudioProcessor::createEditor()
 {
     return new JCBTransientAudioProcessorEditor(*this, guiUndoManager);
 }
-
 
 //==============================================================================
 // SERIALIZACIÓN DEL ESTADO
@@ -1598,8 +1611,7 @@ void JCBTransientAudioProcessor::setStateInformation(const void* data, int sizeI
                 parameterChanged(paramName, value);
             }
         }
-        
-        
+
         // Forzar actualización del editor de forma thread-safe
         // Usar MessageManager para evitar llamadas directas a getActiveEditor()
         juce::MessageManager::callAsync([this]() {
@@ -1650,8 +1662,6 @@ void JCBTransientAudioProcessor::copyBtoA()
     stateB.captureFrom(apvts);
     stateA = stateB;
 }
-
-// isBeingAutomated() eliminado - ya no necesario con sistema undo simplificado
 
 //==============================================================================
 // MÉTODOS LEGACY
@@ -1767,7 +1777,6 @@ bool JCBTransientAudioProcessor::isOutputChannelStereoPair(int index) const
     return JCBTransient::num_outputs() == 2;
 }
 
-
 //==============================================================================
 // Clip Detection Methods
 //==============================================================================
@@ -1858,14 +1867,12 @@ void JCBTransientAudioProcessor::resetClipIndicators()
     }
 }
 
-
 //==============================================================================
 // Timer implementation
 void JCBTransientAudioProcessor::timerCallback()
 {
     // Timer callback ya no necesario sin gain reduction meter
 }
-
 //==============================================================================
 // Format-specific implementations
 

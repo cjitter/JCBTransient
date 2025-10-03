@@ -132,4 +132,4 @@ Los tests validan los formatos VST3 y AU del plugin.
 
 --
 
-*© 2025 Juan Carlos Blancas – JCBTransient v1.0.0-alpha.1*
+*© 2025 Juan Carlos Blancas – JCBTransient v1.0.0-alpha.2*

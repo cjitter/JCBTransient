@@ -1014,10 +1014,7 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
     // Crear paths para áreas rellenas
     juce::Path inputAreaPath;
     juce::Path processedAreaPath;   // Salida procesada
-    
-    // ELIMINADO: baseLine ya no utilizada con nueva visualización
-    // const float baseLine = bounds.getCentreY();
-    
+
     // RESTAURADO: Colectar puntos para visualización (lógica temporal original)
     std::vector<juce::Point<float>> processedPoints;    // Puntos principales de la waveform
     
@@ -1030,11 +1027,11 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         
         // Leer valor bipolar principal
         float processedSample = processedWaveformBuffer[bufferIndex];
-        
+
         // NUEVO: Detección de picos micro-local (analizar 3 muestras adyacentes)
         float localMax = processedSample;
         float localMin = processedSample;
-        
+
         // Analizar muestra anterior y siguiente para detectar picos locales
         for (int offset = -1; offset <= 1; ++offset)
         {
@@ -1051,7 +1048,7 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         float finalSample = processedSample; // Por defecto usar muestra central
         float peakDifference = std::abs(localMax - processedSample);
         float valleyDifference = std::abs(localMin - processedSample);
-        
+
         if (peakDifference > 0.05f || valleyDifference > 0.05f) // Umbral de significancia
         {
             // Usar el extremo más prominente
@@ -1066,20 +1063,20 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         float topOffset = 5.0f; // Margen desde bordes
         float visualRange = (currentZoom == ZoomLevel::Zoomed) ? 0.5f : 1.0f; // x2 amplificación en zoom
         float y = juce::jmap(finalSample, -visualRange, visualRange, bounds.getBottom() - topOffset, bounds.getY() + topOffset);
-        
+
         // Limitar valores a los bounds para evitar artefactos
         y = juce::jlimit(bounds.getY() + topOffset, bounds.getBottom() - topOffset, y);
-        
+
         processedPoints.push_back({x, y});
     }
-    
+
     // NUEVO: Dibujar waveform mejorada con detección de picos micro-local
     if (!processedPoints.empty())
     {
         // COLORES NEUTROS: Gradiente gris-blanco para mejor visibilidad
         const juce::Colour lightGrey = DarkTheme::textPrimary;        // Blanco
         const juce::Colour mediumGrey = DarkTheme::textSecondary;     // Gris claro
-        
+
         // 1. Crear área rellena sutil desde línea central
         const float centerY = bounds.getCentreY();
         juce::Path waveformArea;
@@ -1099,7 +1096,7 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         // Dibujar área rellena muy sutil (reducida aún más para mayor difuminado)
         g.setColour(lightGrey.withAlpha(0.05f * currentFadeOutFactor));
         g.fillPath(waveformArea);
-        
+
         // 2. Dibujar línea continua con efecto difuminado (multicapa)
         juce::Path waveformLine;
         waveformLine.startNewSubPath(processedPoints[0]);
@@ -1107,15 +1104,15 @@ void TransferFunctionDisplay::drawWaveformAreas(juce::Graphics& g, juce::Rectang
         {
             waveformLine.lineTo(processedPoints[i]);
         }
-        
+
         // Capa base: más gruesa y muy difusa (efecto blur manual aumentado)
         g.setColour(lightGrey.withAlpha(0.12f * currentFadeOutFactor));
         g.strokePath(waveformLine, juce::PathStrokeType(4.0f, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
-        
+
         // Capa superior: línea principal aún más sutil (reducida de 0.3f a 0.22f)
         g.setColour(lightGrey.withAlpha(0.22f * currentFadeOutFactor));
         g.strokePath(waveformLine, juce::PathStrokeType(1.5f, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
-        
+
         // 3. Dibujar línea de referencia central (cero)
         g.setColour(mediumGrey.withAlpha(0.3f * currentFadeOutFactor));
         g.drawHorizontalLine(static_cast<int>(centerY), bounds.getX(), bounds.getRight());
