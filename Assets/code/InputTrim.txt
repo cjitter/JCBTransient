@@ -1,0 +1,96 @@
+// =============================================================================
+// INPUT TRIM BLOCK - Procesamiento de entrada con ganancia ajustable, key mix y lookahead
+// =============================================================================
+// Entradas: in1 (L), in2 (R), in3 (Sidechain L), in4 (Sidechain R)
+// Salidas: out1 (L delayed), out2 (R delayed), out3 (L dry delayed), out4 (R dry delayed)
+//          out5 (Sidechain mixed signal para detección - sin delay)
+// =============================================================================
+
+// PARÁMETROS
+Param a_TRIM(-12, min=-12, default=0, max=12);        // Input trim gain (dB)
+Param y_SCTRIM(-12, min=-12, default=0, max=12);      // Sidechain input trim (dB)
+Param r_KEY(0, min=0, default=0, max=1);              // External key input mix
+Param n_LOOKAHEAD(0, min=0, default=0, max=10);       // Lookahead time (ms)
+
+// HISTORIAS
+History trimHistory(0);                // Para input trim gain
+History sidechainTrimHistory(0);       // Para sidechain trim gain
+History keyMixHistory(0);              // Para key input mix
+History lookaheadHistory(0);           // Para lookahead
+
+// DELAYS
+Delay leftOutputDelay(1200);           // Delay señal izquierda para procesamiento (25ms @ 48kHz)
+Delay rightOutputDelay(1200);          // Delay señal derecha para procesamiento
+Delay leftInputDelay(1200);            // Delay entrada izquierda para bypass/dry
+Delay rightInputDelay(1200);           // Delay entrada derecha para bypass/dry
+
+// CONSTANTES
+SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos (99.9%)
+SMOOTH_PARAM_FACTOR = 0.001;           // Factor de suavizado para nuevos parámetros (0.1%)
+
+// =============================================================================
+// PROCESAMIENTO
+// =============================================================================
+
+// Trim Principal - Ganancia de entrada
+smoothTrimGain = (trimHistory * SMOOTH_HISTORY_FACTOR) + (a_TRIM * SMOOTH_PARAM_FACTOR);
+trimHistoryNext = fixdenorm(smoothTrimGain);
+trimGainLinear = dbtoa(smoothTrimGain);
+
+// Convertir tiempo de lookahead (ms) a muestras directamente
+lookaheadSamples = mstosamps(n_LOOKAHEAD);
+
+// Leer señales retrasadas PRIMERO (del ciclo anterior)
+leftDelayedForProcessing = leftOutputDelay.read(lookaheadSamples, interp="linear");
+rightDelayedForProcessing = rightOutputDelay.read(lookaheadSamples, interp="linear");
+leftDelayedForBypass = leftInputDelay.read(lookaheadSamples, interp="linear");
+rightDelayedForBypass = rightInputDelay.read(lookaheadSamples, interp="linear");
+
+// Aplicar trim a entradas principales
+leftTrimmed = in1 * trimGainLinear;
+rightTrimmed = in2 * trimGainLinear;
+
+// Escribir señales en delays DESPUÉS de leer (para el siguiente ciclo)
+leftInputDelay.write(in1);          // Sin trim para bypass/dry
+rightInputDelay.write(in2);         // Sin trim para bypass/dry
+leftOutputDelay.write(leftTrimmed); // Con trim para procesamiento
+rightOutputDelay.write(rightTrimmed); // Con trim para procesamiento
+
+// Sidechain Trim - Ganancia de entrada de sidechain
+smoothSidechainTrimGain = (sidechainTrimHistory * SMOOTH_HISTORY_FACTOR) + (y_SCTRIM * SMOOTH_PARAM_FACTOR);
+sidechainTrimHistoryNext = fixdenorm(smoothSidechainTrimGain);
+sidechainTrimGainLinear = dbtoa(smoothSidechainTrimGain);
+
+// Aplicar trim a entradas de sidechain
+leftSidechainTrimmed = in3 * sidechainTrimGainLinear;
+rightSidechainTrimmed = in4 * sidechainTrimGainLinear;
+
+// Crear señal mono de entrada principal (sin delay para detección)
+mainSignalMono = ((rightTrimmed + leftTrimmed)) * 0.707;
+
+// Crear señal mono de sidechain
+sidechainSignalMono = ((rightSidechainTrimmed + leftSidechainTrimmed)) * 0.707;
+
+// Key Mix - Mezcla entre señal principal y external key
+smoothKeyMix = (keyMixHistory * SMOOTH_HISTORY_FACTOR) + (r_KEY * SMOOTH_PARAM_FACTOR);
+keyMixHistoryNext = fixdenorm(smoothKeyMix);
+
+// Key mixing - Mezcla entre señal principal y external key input
+keyMixedSignal = mix(mainSignalMono, sidechainSignalMono, smoothKeyMix);
+
+// =============================================================================
+// SALIDAS
+// =============================================================================
+out1 = leftDelayedForProcessing;   // Audio L con trim y delay
+out2 = rightDelayedForProcessing;  // Audio R con trim y delay
+out3 = leftDelayedForBypass;       // Audio L sin trim con delay (para bypass/dry)
+out4 = rightDelayedForBypass;      // Audio R sin trim con delay (para bypass/dry)
+out5 = keyMixedSignal;             // Señal mezclada para detección (sin delay)
+sidechainMixedSignal = keyMixedSignal; // Alias para compatibilidad con Filters.txt
+
+// =============================================================================
+// ACTUALIZACIÓN DE HISTORIAS
+// =============================================================================
+trimHistory = trimHistoryNext;
+sidechainTrimHistory = sidechainTrimHistoryNext;
+keyMixHistory = keyMixHistoryNext;

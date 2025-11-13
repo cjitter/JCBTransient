@@ -1,0 +1,228 @@
+// =============================================================================
+// DETECTOR + GAIN CALC BLOCK - Detección de envolvente y cálculo de ganancia transient
+// =============================================================================
+// Entradas: in1 (Señal de detección)
+// Salidas: out1 (Total gain factor), out2 (Attack envelope 0-1), out3 (Sustain envelope 0-1)
+//          out4 (Attack gain factor), out5 (Sustain gain factor)
+//          out6 (Sensitivity efectiva), out7 (Gate open 0/1), out8 (Envolvente lineal)
+// =============================================================================
+
+// PARÁMETROS - Detección
+Param d_ATK(min=0, default=1, max=150);         // Attack time (ms)
+Param e_REL(min=0.1, default=60, max=350);      // Release time (ms)
+Param f_HOLD(min=0, default=0, max=250);        // Hold time (ms)
+Param q_SENSITIVITY(0.5, min=0, default=0.5, max=1);  // Detection sensitivity (0-1)
+Param z_SMOOTH(0, min=0, default=0, max=1);     // Extra smoothing amount
+
+// PARÁMETROS - Gain Calc
+Param b_ATTACK_GAIN(0, min=-18, default=0, max=18);   // Attack enhancement/reduction (dB)
+Param c_SUSTAIN_GAIN(0, min=-18, default=0, max=18);  // Sustain enhancement/reduction (dB)
+
+// HISTORIAS - Detección
+History peakEnvSharp(0);               // Detector de picos rápido
+History releaseHistSharp(0);           // Historia de release para sharp
+History attackHistSharp(0);            // Historia de attack para sharp
+History holdCounterPlusEquals(0);      // Contador persistente tipo plusequals
+History smoothFilterHistory(0);        // Para el filtro paso bajo de SMOOTH
+
+// HISTORIAS - Gain Calc
+History transientSmoothHistory(0);     // Suavizado de detección (gate)
+History attackGainHistory(0);          // Para attack gain smoothing
+History sustainGainHistory(0);         // Para sustain gain smoothing
+
+// HISTORIAS - Compartidas
+History atkHistory(0);                 // Para attack time
+History relHistory(0);                 // Para release time
+History holdHistory(0);                // Para hold time smoothing
+History sensitivityHistory(0);         // Para sensitivity smoothing
+History smoothAmountHistory(0);        // Para extra smoothing
+
+// CONSTANTES
+SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos
+SMOOTH_PARAM_FACTOR   = 0.001;         // Factor de suavizado para nuevos parámetros
+
+// =============================================================================
+// SMOOTHING DE PARÁMETROS COMPARTIDOS
+// =============================================================================
+
+smoothAttack = (atkHistory * SMOOTH_HISTORY_FACTOR) + (d_ATK * SMOOTH_PARAM_FACTOR);
+atkHistoryNext = fixdenorm(smoothAttack);
+
+smoothRelease = (relHistory * SMOOTH_HISTORY_FACTOR) + (e_REL * SMOOTH_PARAM_FACTOR);
+relHistoryNext = fixdenorm(smoothRelease);
+
+smoothHold = (holdHistory * SMOOTH_HISTORY_FACTOR) + (f_HOLD * SMOOTH_PARAM_FACTOR);
+holdHistoryNext = fixdenorm(smoothHold);
+
+smoothSensitivity = (sensitivityHistory * SMOOTH_HISTORY_FACTOR) + (q_SENSITIVITY * SMOOTH_PARAM_FACTOR);
+sensitivityHistoryNext = fixdenorm(smoothSensitivity);
+
+// Soft‑knee en tramo alto de sensibilidad: 0.70→1.00 se comprime hacia 0.70→0.80
+kneeStart = 0.70;
+kneeEnd   = 1.00;
+kneeTarget= 0.80;
+t = clamp((smoothSensitivity - kneeStart) / (kneeEnd - kneeStart), 0, 1);
+t2 = t * t;  // easing cuadrático
+smoothSensitivity = mix(smoothSensitivity, kneeTarget, t2);
+
+smoothSmoothAmount = (smoothAmountHistory * SMOOTH_HISTORY_FACTOR) + (z_SMOOTH * SMOOTH_PARAM_FACTOR);
+smoothAmountHistoryNext = fixdenorm(smoothSmoothAmount);
+
+// =============================================================================
+// DETECCIÓN DE ENVOLVENTE
+// =============================================================================
+
+// Preparación de coeficientes
+attack_ms     = max(0.05, smoothAttack);
+release_ms    = max(0.1,  smoothRelease);
+attack_coeff  = exp(-1 / (attack_ms  * samplerate * 0.001));
+release_coeff = exp(-1 / (release_ms * samplerate * 0.001));
+
+// SHARP DETECTOR - Valores absolutos
+peakEnvSharp = abs(in1);
+
+// HOLD - Implementación con plusequals
+hold_samples = mstosamps(smoothHold);
+
+// Detectar cambios significativos (delta)
+envelope_delta = abs(peakEnvSharp - releaseHistSharp);
+
+// Umbral de sensibilidad (mapeo directo: 0→0.5, 1→0.02)
+sensitivity_threshold = scale(smoothSensitivity, 0, 1, 0.5, 0.02);
+
+// Comparador que detecta transiente
+transient_detected = envelope_delta > sensitivity_threshold ? 1 : 0;
+
+// Lógica plusequals - incrementar contador cuando hay transiente
+holdCounterPlusEqualsNext = holdCounterPlusEquals;
+if (transient_detected > 0) {
+    holdCounterPlusEqualsNext = 0;  // Reset counter on transient
+} else if (holdCounterPlusEquals < hold_samples) {
+    holdCounterPlusEqualsNext = holdCounterPlusEquals + 1;
+}
+
+// Gate está abierto si: hay transiente O aún en hold
+still_in_hold = holdCounterPlusEquals < hold_samples ? 1 : 0;
+gate_open = (transient_detected || still_in_hold) ? 1 : 0;
+
+// Declarar variables antes de usarlas
+sharpEnvelopeFinal = 0;
+release_env = 0;
+env_post_release = 0;
+attack_env_sharp = 0;
+
+// Aplicar envelope follower con gate
+if (gate_open > 0) {
+    // Gate abierto - usar attack/release normal
+    release_env       = releaseHistSharp * release_coeff;
+    env_post_release  = max(peakEnvSharp, release_env);
+    attack_env_sharp  = attackHistSharp * attack_coeff;
+    sharpEnvelopeFinal= ((1 - attack_coeff) * env_post_release) + (attack_coeff * attack_env_sharp);
+} else {
+    // Gate cerrado - solo release
+    sharpEnvelopeFinal= attackHistSharp * release_coeff;
+}
+
+sharpEnvelopeFinal = max(sharpEnvelopeFinal, 1e-06);
+
+// Actualizar historias del detector
+releaseHistSharp = fixdenorm(env_post_release);
+attackHistSharp  = fixdenorm(sharpEnvelopeFinal);
+
+// SMOOTH - Filtro paso bajo agresivo en el envelope (opcional)
+if (z_SMOOTH > 0.01) {
+    // Coeficiente directo: 0 = sin smooth, 1 = máximo smooth
+    smooth_coeff = z_SMOOTH * 0.99;  // Hasta 99% del valor anterior
+    sharpEnvelopeFinal = (smoothFilterHistory * smooth_coeff) + (sharpEnvelopeFinal * (1 - smooth_coeff));
+}
+
+// Actualizar la historia del filtro SMOOTH
+smoothFilterHistoryNext = sharpEnvelopeFinal;
+
+// =============================================================================
+// CÁLCULO DE GANANCIA TRANSIENT
+// =============================================================================
+
+// Smoothing de parámetros de ganancia
+smoothAttackGain = (attackGainHistory  * SMOOTH_HISTORY_FACTOR) + (b_ATTACK_GAIN   * SMOOTH_PARAM_FACTOR);
+attackGainHistoryNext  = fixdenorm(smoothAttackGain);
+
+smoothSustainGain= (sustainGainHistory * SMOOTH_HISTORY_FACTOR) + (c_SUSTAIN_GAIN  * SMOOTH_PARAM_FACTOR);
+sustainGainHistoryNext = fixdenorm(smoothSustainGain);
+
+// Usar el gate_open del detector
+attack_env = gate_open;  // Gate open (0/1)
+
+// Declarar variable antes de usarla
+attack_env_smooth = 0;
+
+// Suavizar la detección para evitar cambios abruptos
+smo_factor = 1 + (smoothSmoothAmount * 4);  // de 1x (sin efecto) a 5x (máxima suavidad)
+detection_attack_coeff  = exp(-1 / (max(0.5, smoothAttack * 0.1)  * samplerate * 0.001 * smo_factor));
+detection_release_coeff = exp(-1 / (max(5,   smoothRelease * 0.5) * samplerate * 0.001 * smo_factor));
+
+// Aplicar suavizado según estado
+if (attack_env > 0.5) {
+    attack_env_smooth = (transientSmoothHistory * detection_attack_coeff) + (attack_env * (1 - detection_attack_coeff));
+} else {
+    attack_env_smooth = (transientSmoothHistory * detection_release_coeff) + (attack_env * (1 - detection_release_coeff));
+}
+
+transientSmoothHistoryNext = fixdenorm(attack_env_smooth);
+
+// Limitar y crear envolvente de sustain (mantener carácter original)
+attack_env = min(attack_env_smooth, 1);
+sustain_env = 1 - pow(min(attack_env * 1.5, 1), 0.7);
+
+// Convertir controles a factores lineales con curva
+attack_factor  = pow(dbtoa(smoothAttackGain), 0.8);
+// Palanca final de sustain (como acordamos): 1.05 en factor + 0.9 en tilt
+sustain_factor = pow(dbtoa(smoothSustainGain), 1.05);
+
+// Sensibilidades para Attack y Sustain (compensar el knee)
+sensAttack  = smoothSensitivity;
+sensSustain = clamp(smoothSensitivity / 0.80, 0, 1);
+
+// Dar un poco más de peso al sustain en 0..1 (tilt)
+sustain_env_tilt = pow(sustain_env, 0.9);
+
+// Calcular ganancia total con mezcla ponderada
+gain_from_attack  = mix(1, attack_factor,  attack_env        * sensAttack);
+gain_from_sustain = mix(1, sustain_factor, sustain_env_tilt  * sensSustain);
+
+// Combinar ambas ganancias
+gain_total = gain_from_attack * gain_from_sustain;
+gain_total = max(0.1, min(10, gain_total));  // Limitar entre -20dB y +20dB
+
+// =============================================================================
+// SALIDAS
+// =============================================================================
+out1 = gain_total;          // Total gain factor (principal)
+out2 = attack_env;          // Attack envelope (0-1)
+out3 = sustain_env;         // Sustain envelope (0-1)
+out4 = gain_from_attack;    // Attack gain factor
+out5 = gain_from_sustain;   // Sustain gain factor
+out6 = smoothSensitivity;   // Sensitivity efectiva (post-knee)
+out7 = gate_open;           // Gate abierto (0/1)
+out8 = sharpEnvelopeFinal;  // Envolvente lineal
+
+// =============================================================================
+// ACTUALIZACIÓN DE HISTORIAS
+// =============================================================================
+// Historias de detección
+releaseHistSharp = fixdenorm(env_post_release);
+attackHistSharp  = fixdenorm(sharpEnvelopeFinal);
+holdCounterPlusEquals = holdCounterPlusEqualsNext;
+smoothFilterHistory   = smoothFilterHistoryNext;
+
+// Historias de gain calc
+transientSmoothHistory = transientSmoothHistoryNext;
+attackGainHistory   = attackGainHistoryNext;
+sustainGainHistory  = sustainGainHistoryNext;
+
+// Historias compartidas
+atkHistory = atkHistoryNext;
+relHistory = relHistoryNext;
+holdHistory = holdHistoryNext;
+sensitivityHistory = sensitivityHistoryNext;
+smoothAmountHistory = smoothAmountHistoryNext;

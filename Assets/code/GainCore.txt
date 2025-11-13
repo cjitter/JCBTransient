@@ -1,0 +1,162 @@
+// =============================================================================
+// GAIN CORE BLOCK - Aplicación de ganancia con modo delta
+// =============================================================================
+// Entradas: in1 (Audio L delayed), in2 (Audio R delayed), in3 (Total gain factor)
+//           in4 (Attack gain factor), in5 (Sustain gain factor)
+//           in6 (Attack envelope), in7 (Sustain envelope), in8 (Sensitivity)
+// Salidas: out1 (Audio L procesado), out2 (Audio R procesado)
+// =============================================================================
+
+// PARÁMETROS
+Param v_DELTA(0, min=0, default=0, max=1);            // Delta mode (difference signal)
+Param h_DELTAMODE(0, min=0, default=0, max=2);        // Delta Mode: 0=Attack, 1=Both, 2=Sustain
+Param i_MAKEUP(-12, min=-12, default=0, max=12);      // Makeup gain (dB)
+
+// HISTORIAS
+History deltaModeHistory(0);           // Para delta mode amount
+History rangeHistory(0);               // Para delta mode selection
+History makeupGainHistory(0);          // Para makeup gain
+History reductionHistLeft(0);          // Suavizado de gain reduction canal L
+History reductionHistRight(0);         // Suavizado de gain reduction canal R
+
+// CONSTANTES
+SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos
+SMOOTH_PARAM_FACTOR = 0.001;           // Factor de suavizado para nuevos parámetros
+AUTO_MAKEUP_FACTOR = -0.7;             // Factor de compensación automática de ganancia
+
+// =============================================================================
+// PROCESAMIENTO
+// =============================================================================
+
+// Smoothing de parámetros
+smoothDeltaMode = (deltaModeHistory * SMOOTH_HISTORY_FACTOR) + (v_DELTA * SMOOTH_PARAM_FACTOR);
+deltaModeHistoryNext = fixdenorm(smoothDeltaMode);
+
+smoothRange = (rangeHistory * SMOOTH_HISTORY_FACTOR) + (h_DELTAMODE * SMOOTH_PARAM_FACTOR);
+rangeHistoryNext = fixdenorm(smoothRange);
+
+smoothMakeupGain = (makeupGainHistory * SMOOTH_HISTORY_FACTOR) + (i_MAKEUP * SMOOTH_PARAM_FACTOR);
+makeupGainHistoryNext = fixdenorm(smoothMakeupGain);
+
+// Obtener valores de entrada
+gain_total = in3;
+attack_factor = in4;
+sustain_factor = in5;
+attack_env = in6;
+sustain_env = in7;
+smoothSensitivity = in8;
+
+// Sensibilidades diferenciadas
+sensAttack  = smoothSensitivity;
+sensSustain = clamp(smoothSensitivity / 0.80, 0, 1);
+
+// =============================================================================
+// PROCESAMIENTO CANAL IZQUIERDO
+// =============================================================================
+
+// Aplicar ganancia total
+expandedLeft = in1 * gain_total;
+
+// MODO DELTA MEJORADO - Con transición suave entre modos
+delta_control = clamp(smoothDeltaMode, 0, 1);
+delta_signal = 0;
+
+if(delta_control > 0.01) {
+    delta_mode = smoothRange;  // 0-2
+    
+    // Calcular las tres posibles señales delta
+    // 1. Attack only
+    gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
+    delta_attack_only = (in1 * gain_attack_only) - in1;
+    
+    // 2. Sustain only
+    gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
+    delta_sustain_only = (in1 * gain_sustain_only) - in1;
+    
+    // 3. Both (completo)
+    delta_both = expandedLeft - in1;
+    
+    // Hacer morphing suave entre los modos
+    if(delta_mode <= 1) {
+        // Transición de Attack (0) a Both (1)
+        fade = delta_mode;
+        delta_signal = mix(delta_attack_only, delta_both, fade);
+    } else {
+        // Transición de Both (1) a Sustain (2)
+        fade = delta_mode - 1;
+        delta_signal = mix(delta_both, delta_sustain_only, fade);
+    }
+}
+
+leftWithDelta = mix(expandedLeft, delta_signal, delta_control);
+
+// Makeup gain
+autoMakeupGainReduction = 0;  // No hay gain reduction en transient designer
+reduction_smooth_mul = reductionHistLeft * SMOOTH_HISTORY_FACTOR;
+reduction_current_mul = autoMakeupGainReduction * SMOOTH_PARAM_FACTOR;
+reduction_smoothed = reduction_current_mul + reduction_smooth_mul;
+auto_makeup = reduction_smoothed * AUTO_MAKEUP_FACTOR;
+
+final_makeup_db = smoothMakeupGain;
+makeup_linear = dbtoa(final_makeup_db);
+leftProcessed = leftWithDelta * makeup_linear;
+reductionHistLeftNext = fixdenorm(reduction_smoothed);
+
+// =============================================================================
+// PROCESAMIENTO CANAL DERECHO
+// =============================================================================
+
+// Aplicar ganancia total
+expandedRight = in2 * gain_total;
+
+// MODO DELTA MEJORADO - Canal Derecho
+rightDeltaControl = clamp(smoothDeltaMode, 0, 1);
+rightDeltaSignal = 0;
+
+if(rightDeltaControl > 0.01) {
+    right_delta_mode = smoothRange;  // 0-2
+    
+    // Calcular las tres posibles señales delta
+    right_gain_attack_only = mix(1, attack_factor, attack_env * sensAttack);
+    right_delta_attack_only = (in2 * right_gain_attack_only) - in2;
+    
+    right_gain_sustain_only = mix(1, sustain_factor, sustain_env * sensSustain);
+    right_delta_sustain_only = (in2 * right_gain_sustain_only) - in2;
+    
+    right_delta_both = expandedRight - in2;
+    
+    if(right_delta_mode <= 1) {
+        right_fade = right_delta_mode;
+        rightDeltaSignal = mix(right_delta_attack_only, right_delta_both, right_fade);
+    } else {
+        right_fade = right_delta_mode - 1;
+        rightDeltaSignal = mix(right_delta_both, right_delta_sustain_only, right_fade);
+    }
+}
+
+rightWithDelta = mix(expandedRight, rightDeltaSignal, rightDeltaControl);
+
+// Makeup gain - Canal Derecho
+rightReductionSmoothMul = reductionHistRight * SMOOTH_HISTORY_FACTOR;
+rightReductionCurrentMul = autoMakeupGainReduction * SMOOTH_PARAM_FACTOR;
+rightReductionSmoothed = rightReductionCurrentMul + rightReductionSmoothMul;
+rightAutoMakeup = rightReductionSmoothed * AUTO_MAKEUP_FACTOR;
+
+rightMakeupLinear = dbtoa(final_makeup_db);
+rightProcessed = rightWithDelta * rightMakeupLinear;
+reductionHistRightNext = fixdenorm(rightReductionSmoothed);
+
+// =============================================================================
+// SALIDAS
+// =============================================================================
+out1 = leftProcessed;           // Audio L procesado
+out2 = rightProcessed;          // Audio R procesado
+
+// =============================================================================
+// ACTUALIZACIÓN DE HISTORIAS
+// =============================================================================
+deltaModeHistory = deltaModeHistoryNext;
+rangeHistory = rangeHistoryNext;
+makeupGainHistory = makeupGainHistoryNext;
+reductionHistLeft = reductionHistLeftNext;
+reductionHistRight = reductionHistRightNext;

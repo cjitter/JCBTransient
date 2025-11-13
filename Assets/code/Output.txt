@@ -1,0 +1,99 @@
+// =============================================================================
+// OUTPUT BLOCK - Mezcla dry/wet, saturación y bypass
+// =============================================================================
+// Entradas: in1 (L procesado), in2 (R procesado), in3 (L dry), in4 (R dry)
+// Salidas: out1 (L final), out2 (R final)
+// =============================================================================
+
+// PARÁMETROS
+Param o_DRYWET(0, min=0, default=1, max=1);           // Dry/Wet mix (0=Dry, 1=Wet)
+Param u_SOFTCLIP(0, min=0, default=0, max=1);         // Output saturation amount
+Param p_BYPASS(0, min=0, default=0, max=1);           // Bypass switch
+
+// HISTORIAS
+History dryWetMixHistory(0);           // Para dry/wet mix
+History softclipHistory(0);            // Para softclip amount
+History bypassAmountHistory(0);        // Para bypass amount
+
+// CONSTANTES
+SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos
+SMOOTH_PARAM_FACTOR = 0.001;           // Factor de suavizado para nuevos parámetros
+
+// =============================================================================
+// PROCESAMIENTO
+// =============================================================================
+
+// Smoothing de parámetros
+smoothDryWetMix = (dryWetMixHistory * SMOOTH_HISTORY_FACTOR) + (o_DRYWET * SMOOTH_PARAM_FACTOR);
+dryWetMixHistoryNext = fixdenorm(smoothDryWetMix);
+
+smoothSoftclip = (softclipHistory * SMOOTH_HISTORY_FACTOR) + (u_SOFTCLIP * SMOOTH_PARAM_FACTOR);
+softclipHistoryNext = fixdenorm(smoothSoftclip);
+
+// Bypass - Activación/desactivación del efecto
+bypassInverted = 1 - p_BYPASS;  // Invertir lógica (1=activo, 0=bypass)
+smoothBypassAmount = (bypassAmountHistory * SMOOTH_HISTORY_FACTOR) + (bypassInverted * SMOOTH_PARAM_FACTOR);
+bypassAmountHistoryNext = fixdenorm(smoothBypassAmount);
+
+// =============================================================================
+// PROCESAMIENTO CANAL IZQUIERDO
+// =============================================================================
+
+// MIX DRY/WET - Balance entre señal original y procesada
+leftDryWetMixed = mix(in3, in1, smoothDryWetMix);
+
+// OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
+maxOutput = 0.989;
+saturationAmount = clamp(smoothSoftclip, 0, 1);
+
+// Saturación asimétrica para añadir color/calidez
+leftSaturated = 0;
+if(leftDryWetMixed > 0) {
+    leftSaturated = tanh(leftDryWetMixed * 1.2) * 0.833;
+}
+else {
+    leftSaturated = tanh(leftDryWetMixed * 0.8) * 1.25;
+}
+leftSaturated = clamp(leftSaturated, -maxOutput, maxOutput);
+
+// Mezclar señal original con saturada según el parámetro
+leftProcessedOutput = mix(leftDryWetMixed, leftSaturated, saturationAmount);
+
+// Bypass final: 0 → Dry (in3), 1 → Wet procesado (leftProcessedOutput)
+leftFinalOutput = mix(in3, leftProcessedOutput, smoothBypassAmount);
+
+// =============================================================================
+// PROCESAMIENTO CANAL DERECHO
+// =============================================================================
+
+// MIX DRY/WET - Balance entre señal original y procesada
+rightDryWetMixed = mix(in4, in2, smoothDryWetMix);
+
+// OUTPUT PROCESSING - Saturación asimétrica (Off/Soft)
+rightSaturated = 0;
+if(rightDryWetMixed > 0) {
+    rightSaturated = tanh(rightDryWetMixed * 1.2) * 0.833;
+}
+else {
+    rightSaturated = tanh(rightDryWetMixed * 0.8) * 1.25;
+}
+rightSaturated = clamp(rightSaturated, -maxOutput, maxOutput);
+
+// Mezclar señal original con saturada según el parámetro
+rightProcessedOutput = mix(rightDryWetMixed, rightSaturated, saturationAmount);
+
+// Bypass final: 0 → Dry (in4), 1 → Wet procesado (rightProcessedOutput)
+rightFinalOutput = mix(in4, rightProcessedOutput, smoothBypassAmount);
+
+// =============================================================================
+// SALIDAS
+// =============================================================================
+out1 = leftFinalOutput;   // Audio L final
+out2 = rightFinalOutput;  // Audio R final
+
+// =============================================================================
+// ACTUALIZACIÓN DE HISTORIAS
+// =============================================================================
+dryWetMixHistory = dryWetMixHistoryNext;
+softclipHistory = softclipHistoryNext;
+bypassAmountHistory = bypassAmountHistoryNext;

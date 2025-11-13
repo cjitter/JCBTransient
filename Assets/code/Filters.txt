@@ -1,0 +1,216 @@
+// =============================================================================
+// FILTERS BLOCK - Filtros de sidechain HPF/LPF con orden variable
+// =============================================================================
+// Entradas: in1 (Señal de sidechain ya mezclada)
+// Salidas: out1 (Señal filtrada para detección)
+// =============================================================================
+
+// PARÁMETROS
+Param j_HPF(20, min=20, default=20, max=20000);       // Sidechain HPF frequency (Hz)
+Param j_HPFORDER(0, min=0, default=0, max=1);         // HPF order (0=12dB/oct, 1=24dB/oct)
+Param k_LPF(20, min=20, default=20000, max=20000);    // Sidechain LPF frequency (Hz)
+Param k_LPFORDER(0, min=0, default=0, max=1);         // LPF order (0=12dB/oct, 1=24dB/oct)
+Param l_SC(0, min=0, default=0, max=1);               // Sidechain filter enable
+
+// HISTORIAS - Filtros LPF
+History lpfHistory1(0);                // LPF stage 1 input delay
+History lpfHistory2(0);                // LPF stage 1 output delay z^-1
+History lpfHistory3(0);                // LPF stage 1 input z^-1
+History lpfHistory4(0);                // LPF stage 1 output z^-2
+History lpfHistory5(0);                // LPF stage 2 input delay
+History lpfHistory6(0);                // LPF stage 2 output delay z^-1
+History lpfHistory7(0);                // LPF stage 2 input z^-1
+History lpfHistory8(0);                // LPF stage 2 output z^-2
+
+// HISTORIAS - Filtros HPF
+History hpfHistory1(0);                // HPF stage 1 output delay z^-1
+History hpfHistory2(0);                // HPF stage 1 input delay
+History hpfHistory3(0);                // HPF stage 1 input z^-1
+History hpfHistory4(0);                // HPF stage 1 output z^-2
+History hpfHistory5(0);                // HPF stage 2 output delay z^-1
+History hpfHistory6(0);                // HPF stage 2 input delay
+History hpfHistory7(0);                // HPF stage 2 input z^-1
+History hpfHistory8(0);                // HPF stage 2 output z^-2
+
+// HISTORIAS - Smoothing
+History hpfFreqHistory(0);             // Para HPF frequency
+History lpfFreqHistory(0);             // Para LPF frequency
+History scEnableHistory(0);            // Para sidechain filter enable
+History hpfOrderHistory(0);            // Para suavizar cambio de orden HPF
+History lpfOrderHistory(0);            // Para suavizar cambio de orden LPF
+
+// CONSTANTES
+SMOOTH_HISTORY_FACTOR = 0.999;         // Factor de suavizado para valores históricos
+SMOOTH_PARAM_FACTOR = 0.001;           // Factor de suavizado para nuevos parámetros
+BUTTERWORTH_Q = 0.707;                 // Q Butterworth auténtico (12/24 dB/oct sin resonancia)
+
+// =============================================================================
+// PROCESAMIENTO
+// =============================================================================
+
+
+// Smoothing de parámetros
+smoothHpfFreq = (hpfFreqHistory * SMOOTH_HISTORY_FACTOR) + (j_HPF * SMOOTH_PARAM_FACTOR);
+hpfFreqHistoryNext = fixdenorm(smoothHpfFreq);
+
+smoothLpfFreq = (lpfFreqHistory * SMOOTH_HISTORY_FACTOR) + (k_LPF * SMOOTH_PARAM_FACTOR);
+lpfFreqHistoryNext = fixdenorm(smoothLpfFreq);
+
+smoothScEnable = (scEnableHistory * SMOOTH_HISTORY_FACTOR) + (l_SC * SMOOTH_PARAM_FACTOR);
+scEnableHistoryNext = fixdenorm(smoothScEnable);
+
+smoothHpfOrder = (hpfOrderHistory * SMOOTH_HISTORY_FACTOR) + (j_HPFORDER * SMOOTH_PARAM_FACTOR);
+hpfOrderHistoryNext = fixdenorm(smoothHpfOrder);
+
+smoothLpfOrder = (lpfOrderHistory * SMOOTH_HISTORY_FACTOR) + (k_LPFORDER * SMOOTH_PARAM_FACTOR);
+lpfOrderHistoryNext = fixdenorm(smoothLpfOrder);
+
+// Selección discreta de orden
+hpfOrderDiscrete = smoothHpfOrder < 0.5 ? 0 : 1;
+lpfOrderDiscrete = smoothLpfOrder < 0.5 ? 0 : 1;
+
+
+// =============================================================================
+// COEFICIENTES DE FILTROS BUTTERWORTH
+// =============================================================================
+
+// Coeficientes LPF Butterworth de 2º orden
+omega = ((smoothLpfFreq * twopi)) / samplerate;
+sn = sin(omega);
+cs = cos(omega);
+one_over_Q = 1 / BUTTERWORTH_Q;
+alpha = ((sn * 0.5)) * one_over_Q;
+b0 = 1 / ((1 + alpha));
+a2 = ((((1 - cs)) * 0.5)) * b0;
+a1 = ((1 - cs)) * b0;
+b1 = ((-2 * cs)) * b0;
+b2 = ((1 - alpha)) * b0;
+
+lpfCoeffA2 = a2;
+lpfCoeffA1 = a1;
+lpfCoeffA0 = a2;
+lpfCoeffB1 = b1;
+lpfCoeffB2 = b2;
+
+// Coeficientes HPF Butterworth de 2º orden
+omega_hpf = ((smoothHpfFreq * twopi)) / samplerate;
+sn_hpf = sin(omega_hpf);
+cs_hpf = cos(omega_hpf);
+alpha_hpf = ((sn_hpf * 0.5)) / BUTTERWORTH_Q;
+b0_hpf = 1 / ((1 + alpha_hpf));
+a_hpf = ((((1 + cs_hpf)) * 0.5)) * b0_hpf;
+a_neg_hpf = (-(1 + cs_hpf)) * b0_hpf;
+b1_hpf = ((-2 * cs_hpf)) * b0_hpf;
+b2_hpf = ((1 - alpha_hpf)) * b0_hpf;
+
+hpfCoeffA2 = a_hpf;
+hpfCoeffA1 = a_neg_hpf;
+hpfCoeffA0 = a_hpf;
+hpfCoeffB1 = b1_hpf;
+hpfCoeffB2 = b2_hpf;
+
+// =============================================================================
+// LPF - FILTRO PASO BAJO
+// =============================================================================
+
+// Primera etapa LPF (12 dB/oct)
+lpfInput = in1 * lpfCoeffA2;
+lpfFromHistory1 = lpfHistory3 * lpfCoeffA1;
+lpfFromHistory2 = lpfHistory1 * lpfCoeffA0;
+lpfFeedback1 = lpfHistory2 * lpfCoeffB2;
+lpfFeedback2 = lpfHistory4 * lpfCoeffB1;
+lpfFilteredSignal = ((((lpfFromHistory2 + lpfFromHistory1)) + lpfInput)) - ((lpfFeedback2 + lpfFeedback1));
+
+lpfHistory1Next = fixdenorm(lpfHistory3);
+lpfHistory2Next = fixdenorm(lpfHistory4);
+lpfHistory3Next = fixdenorm(in1);
+lpfHistory4Next = fixdenorm(lpfFilteredSignal);
+
+// Segunda etapa LPF (para 24 dB/oct)
+lpfStage2Input = lpfFilteredSignal * lpfCoeffA2;
+lpfStage2FromHistory1 = lpfHistory7 * lpfCoeffA1;
+lpfStage2FromHistory2 = lpfHistory5 * lpfCoeffA0;
+lpfStage2Feedback1 = lpfHistory6 * lpfCoeffB2;
+lpfStage2Feedback2 = lpfHistory8 * lpfCoeffB1;
+lpfStage2FilteredSignal = ((((lpfStage2FromHistory2 + lpfStage2FromHistory1)) + lpfStage2Input)) - ((lpfStage2Feedback2 + lpfStage2Feedback1));
+
+lpfHistory5Next = fixdenorm(lpfHistory7);
+lpfHistory6Next = fixdenorm(lpfHistory8);
+lpfHistory7Next = fixdenorm(lpfFilteredSignal);
+lpfHistory8Next = fixdenorm(lpfStage2FilteredSignal);
+
+// Seleccionar salida según orden
+lpfFinalSignal = lpfOrderDiscrete == 0 ? lpfFilteredSignal : lpfStage2FilteredSignal;
+
+// Mezclar señal directa con LPF según ONSIDECHAIN
+lpfMixedSignal = mix(in1, lpfFinalSignal, smoothScEnable);
+
+// =============================================================================
+// HPF - FILTRO PASO ALTO
+// =============================================================================
+
+// Primera etapa HPF (12 dB/oct)
+hpfInput = lpfMixedSignal * hpfCoeffA2;
+hpfFromHistory1 = hpfHistory3 * hpfCoeffA1;
+hpfFromHistory2 = hpfHistory2 * hpfCoeffA0;
+hpfFeedback1 = hpfHistory1 * hpfCoeffB2;
+hpfFeedback2 = hpfHistory4 * hpfCoeffB1;
+hpfFilteredSignal = ((((hpfFromHistory2 + hpfFromHistory1)) + hpfInput)) - ((hpfFeedback2 + hpfFeedback1));
+
+hpfHistory1Next = fixdenorm(hpfHistory4);
+hpfHistory2Next = fixdenorm(hpfHistory3);
+hpfHistory3Next = fixdenorm(lpfMixedSignal);
+hpfHistory4Next = fixdenorm(hpfFilteredSignal);
+
+// Segunda etapa HPF (para 24 dB/oct)
+hpfStage2Input = hpfFilteredSignal * hpfCoeffA2;
+hpfStage2FromHistory1 = hpfHistory7 * hpfCoeffA1;
+hpfStage2FromHistory2 = hpfHistory6 * hpfCoeffA0;
+hpfStage2Feedback1 = hpfHistory5 * hpfCoeffB2;
+hpfStage2Feedback2 = hpfHistory8 * hpfCoeffB1;
+hpfStage2FilteredSignal = ((((hpfStage2FromHistory2 + hpfStage2FromHistory1)) + hpfStage2Input)) - ((hpfStage2Feedback2 + hpfStage2Feedback1));
+
+hpfHistory5Next = fixdenorm(hpfHistory8);
+hpfHistory6Next = fixdenorm(hpfHistory7);
+hpfHistory7Next = fixdenorm(hpfFilteredSignal);
+hpfHistory8Next = fixdenorm(hpfStage2FilteredSignal);
+
+// Seleccionar salida según orden
+hpfFinalSignal = hpfOrderDiscrete == 0 ? hpfFilteredSignal : hpfStage2FilteredSignal;
+
+// Mezclar señal con HPF según ONSIDECHAIN y obtener señal final
+sidechainProcessedSignal = mix(lpfMixedSignal, hpfFinalSignal, smoothScEnable);
+
+// =============================================================================
+// SALIDA
+// =============================================================================
+out1 = sidechainProcessedSignal;  // Señal filtrada para detección
+
+// =============================================================================
+// ACTUALIZACIÓN DE HISTORIAS
+// =============================================================================
+hpfFreqHistory = hpfFreqHistoryNext;
+lpfFreqHistory = lpfFreqHistoryNext;
+scEnableHistory = scEnableHistoryNext;
+hpfOrderHistory = hpfOrderHistoryNext;
+lpfOrderHistory = lpfOrderHistoryNext;
+
+// Historias de filtros LPF
+lpfHistory1 = lpfHistory1Next;
+lpfHistory2 = lpfHistory2Next;
+lpfHistory3 = lpfHistory3Next;
+lpfHistory4 = lpfHistory4Next;
+lpfHistory5 = lpfHistory5Next;
+lpfHistory6 = lpfHistory6Next;
+lpfHistory7 = lpfHistory7Next;
+lpfHistory8 = lpfHistory8Next;
+
+// Historias de filtros HPF
+hpfHistory1 = hpfHistory1Next;
+hpfHistory2 = hpfHistory2Next;
+hpfHistory3 = hpfHistory3Next;
+hpfHistory4 = hpfHistory4Next;
+hpfHistory5 = hpfHistory5Next;
+hpfHistory6 = hpfHistory6Next;
+hpfHistory7 = hpfHistory7Next;
+hpfHistory8 = hpfHistory8Next;
