@@ -172,16 +172,6 @@ private:
         
         void parameterChanged(const juce::String& parameterID, float /*newValue*/) override
         {
-            if (parameterID == "b_THD" || parameterID == "c_RATIO" || parameterID == "q_KNEE")
-            {
-                // Usar SafePointer para thread safety
-                juce::Component::SafePointer<JCBTransientAudioProcessorEditor> safeEditor(editor);
-                
-                juce::MessageManager::callAsync([safeEditor]() {
-                    if (safeEditor)
-                        safeEditor->updateTransferDisplay();
-                });
-            }
         }
         
         JCBTransientAudioProcessorEditor* editor;
@@ -351,7 +341,7 @@ private:
     //==========================================================================
     
     // Título y versión en la parte inferior (combinado como ExpansorGate)
-    juce::TextButton titleLink{"JCBTransient v1.0.0"};
+    juce::TextButton titleLink{"JCBTransient v1.0.1"};
     
     // Imágenes de fondo
     juce::ImageComponent backgroundImage;

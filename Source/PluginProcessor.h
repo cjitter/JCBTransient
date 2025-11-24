@@ -95,6 +95,8 @@ public:
     // APVTS y gestión de parámetros
     juce::AudioProcessorValueTreeState apvts;
     void parameterChanged(const juce::String& parameterID, float newValue) override;
+    void enqueueAllParametersForAudioThread();
+    void pushGenParamByName(const juce::String& name, float value);
     
     //==============================================================================
     // Gestión de estado de la interfaz
@@ -225,6 +227,8 @@ private:
     long m_CurrentBufferSize;
     t_sample** m_InputBuffers;
     t_sample** m_OutputBuffers;
+    std::unordered_map<juce::String, int> genIndexByName;
+    std::vector<juce::String> genParameterList;
 
     std::atomic<bool> nanTripped{false};
     
@@ -380,6 +384,7 @@ private:
     // Cachear índices de gen
     int genIdxLookahead { -1 };
     int genIdxBypass    { -1 };
+    void rebuildGenParameterLookup();
 
 
     // DC-block para fades (opcional)
