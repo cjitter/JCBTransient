@@ -73,9 +73,9 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Verificar si el host es Logic Pro
     juce::PluginHostType hostInfo;
     if (hostInfo.isLogic()) {
-        titleText = "v1.0.0";  // Solo versión para Logic Pro
+        titleText = "v1.0.1";  // Solo versión para Logic Pro
     } else {
-        titleText = "JCBTransient v1.0.0";  // Nombre completo para otros DAWs
+        titleText = "JCBTransient v1.0.1";  // Nombre completo para otros DAWs
     }
     
     titleLink.setButtonText(titleText);
@@ -157,12 +157,6 @@ JCBTransientAudioProcessorEditor::JCBTransientAudioProcessorEditor (JCBTransient
     // Updates iniciales
     updateTransferDisplay();
     
-    // Crear y registrar parameter listener para updates de automatización
-    transferFunctionListener = std::make_unique<TransferFunctionParameterListener>(this);
-    processor.apvts.addParameterListener("b_THD", transferFunctionListener.get());
-    processor.apvts.addParameterListener("c_RATIO", transferFunctionListener.get());
-    processor.apvts.addParameterListener("q_KNEE", transferFunctionListener.get());
-    
     // Configurar estado inicial del idioma
     if (processor.getTooltipLanguageEnglish()) {
         currentLanguage = TooltipLanguage::English;
@@ -238,9 +232,6 @@ JCBTransientAudioProcessorEditor::~JCBTransientAudioProcessorEditor()
     // Eliminar parameter listeners
     if (transferFunctionListener)
     {
-        processor.apvts.removeParameterListener("b_THD", transferFunctionListener.get());
-        processor.apvts.removeParameterListener("c_RATIO", transferFunctionListener.get());
-        processor.apvts.removeParameterListener("q_KNEE", transferFunctionListener.get());
     }
     
     // Remover listener custom de DMODE
@@ -2888,16 +2879,21 @@ void JCBTransientAudioProcessorEditor::loadPresetByName(const juce::String& pres
         applyGraphicsSideEffects(defaultGraphicsOn);
 
         // 4) Empujar valores a Gen~ inmediatamente
-        for (int i = 0; i < JCBTransient::num_params(); ++i)
+        auto pushApvtsToGen = [&](const juce::String& id)
         {
-            auto id = juce::String(JCBTransient::getparametername(processor.getPluginState(), i));
             if (auto* rv = apvts.getRawParameterValue(id))
             {
                 float v = rv->load();
                 if (id == "d_ATK" && v < 0.f)   v = 0.f;
                 if (id == "e_REL" && v < 0.1f)  v = 0.1f;
-                JCBTransient::setparameter(processor.getPluginState(), i, v, nullptr);
+                processor.pushGenParamByName(id, v);
             }
+        };
+
+        for (int i = 0; i < JCBTransient::num_params(); ++i)
+        {
+            const char* rawName = JCBTransient::getparametername(processor.getPluginState(), i);
+            pushApvtsToGen(juce::String(rawName ? rawName : ""));
         }
 
         // 5) Alinear UI sin notificaciones en cascada
@@ -2979,6 +2975,20 @@ void JCBTransientAudioProcessorEditor::loadPresetByName(const juce::String& pres
                         queueParameterUpdate("p_BYPASS", 0.0f);
                         queueParameterUpdate("m_SOLOSC", 0.0f);
                         queueParameterUpdate("v_DELTA", 0.0f);
+
+                        // Sincronizar parámetros con Gen~ (con clamps de seguridad)
+                        for (int i = 0; i < JCBTransient::num_params(); ++i)
+                        {
+                            const char* rawName = JCBTransient::getparametername(processor.getPluginState(), i);
+                            juce::String paramID(rawName ? rawName : "");
+                            if (auto* rv = processor.apvts.getRawParameterValue(paramID))
+                            {
+                                float v = rv->load();
+                                if (paramID == "d_ATK" && v < 0.f)   v = 0.f;
+                                if (paramID == "e_REL" && v < 0.1f)  v = 0.1f;
+                                processor.pushGenParamByName(paramID, v);
+                            }
+                        }
                         
                         syncBypassFromParam();
                         syncDeltaFromParam();
@@ -3011,6 +3021,20 @@ void JCBTransientAudioProcessorEditor::loadPresetByName(const juce::String& pres
                 queueParameterUpdate("p_BYPASS", 0.0f);
                 queueParameterUpdate("m_SOLOSC", 0.0f);
                 queueParameterUpdate("v_DELTA", 0.0f);
+
+                // Sincronizar parámetros con Gen~ (con clamps de seguridad)
+                for (int i = 0; i < JCBTransient::num_params(); ++i)
+                {
+                    const char* rawName = JCBTransient::getparametername(processor.getPluginState(), i);
+                    juce::String paramID(rawName ? rawName : "");
+                    if (auto* rv = processor.apvts.getRawParameterValue(paramID))
+                    {
+                        float v = rv->load();
+                        if (paramID == "d_ATK" && v < 0.f)   v = 0.f;
+                        if (paramID == "e_REL" && v < 0.1f)  v = 0.1f;
+                        processor.pushGenParamByName(paramID, v);
+                    }
+                }
                 
                 syncBypassFromParam();
                 syncDeltaFromParam();
@@ -3295,7 +3319,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     if (currentLanguage == TooltipLanguage::Spanish)
     {
         // Spanish tooltips
-        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v1.0.0\nPlugin de audio open source\nClick para créditos");
+        if (key == "title") return JUCE_UTF8("JCBTransient: diseñador de transientes v1.0.1\nPlugin de audio open source\nClick para créditos");
         if (key == "tran") return JUCE_UTF8("TRANS: ganancia para transientes entre -18 y +18 dB.\nValores positivos realzan ataques, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sust") return JUCE_UTF8("SUST: ganancia para sustain entre -18 y +18 dB.\nValores positivos realzan sustains, negativos los atenúan.\nValor por defecto: 0 dB");
         if (key == "sens") return JUCE_UTF8("SENS: sensibilidad de detección entre 0% y 100%.\nControla la sensibilidad del algoritmo de detección de transientes.\nValor por defecto: 100%");
@@ -3337,7 +3361,7 @@ juce::String JCBTransientAudioProcessorEditor::getTooltipText(const juce::String
     else
 	{
 	    // English tooltips
-        if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v1.0.0\nOpen source audio plugin\nClick for credits");
+        if (key == "title") return JUCE_UTF8("JCBTransient: transient designer v1.0.1\nOpen source audio plugin\nClick for credits");
 	    if (key == "tran") return JUCE_UTF8("TRANS: gain for transients between -18 and +18 dB.\nPositive values enhance attacks, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sust") return JUCE_UTF8("SUST: gain for sustain between -18 and +18 dB.\nPositive values enhance sustains, negative values attenuate them.\nDefault: 0 dB");
 	    if (key == "sens") return JUCE_UTF8("SENS: detection sensitivity between 0% and 100%.\nControls the sensitivity of the transient detection algorithm.\nDefault: 100%");

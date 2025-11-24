@@ -20,7 +20,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(JCBTransient VERSION 1.0.0)
+project(JCBTransient VERSION 1.0.1)
 
 # Configuración C++
 set(CMAKE_CXX_STANDARD 20)
@@ -68,7 +68,7 @@ juce_add_plugin(JCBTransient
         # Información básica del plugin
         PLUGIN_NAME "JCBTransient"
         PRODUCT_NAME "JCBTransient"
-        VERSION 1.0.0
+        VERSION 1.0.1
         DESCRIPTION "Stereo-linked transient shaper with lookahead and sidechain"
 
         # Información de la empresa

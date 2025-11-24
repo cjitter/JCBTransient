@@ -30,6 +30,7 @@ JCBTransientAudioProcessor::JCBTransientAudioProcessor()
     // Inicializar Gen~ state
     m_PluginState = (CommonState *)JCBTransient::create(44100, 64);
     JCBTransient::reset(m_PluginState);
+    rebuildGenParameterLookup();
 
     // Inicializar buffers de Gen~
     m_InputBuffers = new t_sample *[JCBTransient::num_inputs()];
@@ -137,6 +138,7 @@ void JCBTransientAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
     // 3) ***Clave***: sincroniza SR/VS con Gen y re-dimensiona sus delays/constantes
     //    Esto asegura que Gen use el sampleRate real del host (48k si el proyecto es 48k)
     JCBTransient::reset (m_PluginState);
+    rebuildGenParameterLookup();
 
     // Cachear índices de parámetros Gen~
     genIdxLookahead = -1;
@@ -238,6 +240,51 @@ void JCBTransientAudioProcessor::prepareToPlay(double sampleRate, int samplesPer
         if (auto* p = apvts.getRawParameterValue(paramName))
             JCBTransient::setparameter(m_PluginState, i, p->load(), nullptr);
     }
+}
+
+//==============================================================================
+// CACHÉ Y HELPERS DE PARÁMETROS GEN~
+//==============================================================================
+void JCBTransientAudioProcessor::rebuildGenParameterLookup()
+{
+    genIndexByName.clear();
+    genParameterList.clear();
+
+    if (m_PluginState == nullptr)
+        return;
+
+    const int numParams = JCBTransient::num_params();
+    genParameterList.reserve(static_cast<size_t>(numParams));
+
+    for (int i = 0; i < numParams; ++i)
+    {
+        const char* rawName = JCBTransient::getparametername(m_PluginState, i);
+        juce::String name(rawName ? rawName : "");
+        genIndexByName[name] = i;
+        genParameterList.push_back(name);
+    }
+}
+
+void JCBTransientAudioProcessor::enqueueAllParametersForAudioThread()
+{
+    for (const auto& name : genParameterList)
+    {
+        if (auto* param = apvts.getRawParameterValue(name))
+            pushGenParamByName(name, param->load());
+    }
+}
+
+void JCBTransientAudioProcessor::pushGenParamByName(const juce::String& paramName, float value)
+{
+    if (m_PluginState == nullptr)
+        return;
+
+    const auto it = genIndexByName.find(paramName);
+    jassert(it != genIndexByName.end());
+    if (it == genIndexByName.end())
+        return;
+
+    JCBTransient::setparameter(m_PluginState, it->second, value, nullptr);
 }
 
 void JCBTransientAudioProcessor::releaseResources()
@@ -1581,36 +1628,27 @@ void JCBTransientAudioProcessor::setStateInformation(const void* data, int sizeI
             }
         }
         
-        // IMPORTANTE: Sincronizar todos los parámetros con Gen~ después de cargar el estado
-        for (int i = 0; i < JCBTransient::num_params(); i++) {
-            auto paramName = juce::String(JCBTransient::getparametername(m_PluginState, i));
-            if (auto* param = apvts.getRawParameterValue(paramName)) {
-                float value = param->load();
-                
-                // Corregir valores muy pequeños en ATK y REL
-                if (paramName == "d_ATK") {
-                    if (value < 0.1f) {
-                        value = 0.1f;
-                        // Actualizar el parámetro en el APVTS
-                        if (auto* audioParam = apvts.getParameter(paramName)) {
-                            audioParam->setValueNotifyingHost(audioParam->convertTo0to1(value));
-                        }
-                    }
+        // Ajustes mínimos coherentes con parameterChanged()
+        if (auto* atkRaw = apvts.getRawParameterValue("d_ATK")) {
+            float atk = atkRaw->load();
+            if (atk < 0.0f) {
+                atk = 0.0f;
+                if (auto* p = apvts.getParameter("d_ATK")) {
+                    p->setValueNotifyingHost(p->convertTo0to1(atk));
                 }
-                if (paramName == "e_REL") {
-                    if (value < 0.1f) {
-                        value = 0.1f;
-                        // Actualizar el parámetro en el APVTS
-                        if (auto* audioParam = apvts.getParameter(paramName)) {
-                            audioParam->setValueNotifyingHost(audioParam->convertTo0to1(value));
-                        }
-                    }
-                }
-                // NOTA: El compresor no tiene parámetro HOLD (es del expansor/gate)
-                
-                parameterChanged(paramName, value);
             }
         }
+        if (auto* relRaw = apvts.getRawParameterValue("e_REL")) {
+            float rel = relRaw->load();
+            if (rel < 0.1f) {
+                rel = 0.1f;
+                if (auto* p = apvts.getParameter("e_REL")) {
+                    p->setValueNotifyingHost(p->convertTo0to1(rel));
+                }
+            }
+        }
+
+        enqueueAllParametersForAudioThread();
 
         // Forzar actualización del editor de forma thread-safe
         // Usar MessageManager para evitar llamadas directas a getActiveEditor()
